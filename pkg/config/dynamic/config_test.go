@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
+	"github.com/containous/traefik/v2/pkg/config/file"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 )
 
 func TestDeepCopy(t *testing.T) {
@@ -34,4 +36,30 @@ func TestDeepCopy(t *testing.T) {
 	assert.NotEqual(t, reflect.ValueOf(cfgDeepCopy), reflect.ValueOf(cfg))
 	assert.Equal(t, reflect.TypeOf(cfgDeepCopy), reflect.TypeOf(cfg))
 	assert.NotEqual(t, cfgDeepCopy, cfg)
+}
+
+func TestDecodeContentFromMarshalledConfig(t *testing.T) {
+	marshalledConfig := &Configuration{
+		HTTP: &HTTPConfiguration{
+			Services: map[string]*Service{
+				"service": {
+					LoadBalancer: &ServersLoadBalancer{
+						Servers: []Server{
+							{
+								URL: "http://foo:80",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	configData, err := yaml.Marshal(marshalledConfig)
+	require.NoError(t, err)
+
+	unmarshalledConfig := &Configuration{}
+
+	err = file.DecodeContent(string(configData), ".yaml", unmarshalledConfig)
+	require.NoError(t, err)
 }
