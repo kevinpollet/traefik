@@ -23,6 +23,7 @@ import (
 	"github.com/traefik/traefik/v2/pkg/provider/file"
 	"github.com/traefik/traefik/v2/pkg/provider/http"
 	"github.com/traefik/traefik/v2/pkg/provider/kubernetes/crd"
+	"github.com/traefik/traefik/v2/pkg/provider/kubernetes/gateway"
 	"github.com/traefik/traefik/v2/pkg/provider/kubernetes/ingress"
 	"github.com/traefik/traefik/v2/pkg/provider/kv"
 	"github.com/traefik/traefik/v2/pkg/provider/kv/consul"
@@ -783,6 +784,23 @@ func TestDo_staticConfiguration(t *testing.T) {
 			Prefix: "fii",
 		},
 	}
+
+	config.Providers.KubernetesGateway = &gateway.Provider{
+		Endpoint:         "MyEndpoint",
+		Token:            "MyToken",
+		CertAuthFilePath: "MyCertAuthPath",
+		Namespaces:       []string{"a", "b"},
+		LabelSelector:    "myLabelSelector",
+		ThrottleDuration: 0,
+		EntryPoints: map[string]gateway.Entrypoint{
+			"a": {
+				Address:        ":80",
+				HasHTTPTLSConf: false,
+			},
+		},
+	}
+
+	// FIXME Test the other providers once they are migrated
 
 	config.Metrics = &types.Metrics{
 		Prometheus: &types.Prometheus{
