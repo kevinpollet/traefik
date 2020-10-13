@@ -127,6 +127,15 @@ providers:
     labelSelector: foobar
     ingressClass: foobar
     throttleDuration: 42s
+  kubernetesGateway:
+    endpoint: foobar
+    token: foobar
+    certAuthFilePath: foobar
+    namespaces:
+    - foobar
+    - foobar
+    labelSelector: foobar
+    throttleDuration: 42s
   rest:
     insecure: true
   rancher:
@@ -402,3 +411,5 @@ experimental:
   devPlugin:
     goPath: foobar
     moduleName: foobar
+  kubernetesGateway: true
+

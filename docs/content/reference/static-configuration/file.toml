@@ -117,6 +117,13 @@
     labelSelector = "foobar"
     ingressClass = "foobar"
     throttleDuration = 42
+  [providers.kubernetesGateway]
+    endpoint = "foobar"
+    token = "foobar"
+    certAuthFilePath = "foobar"
+    namespaces = ["foobar", "foobar"]
+    labelSelector = "foobar"
+    throttleDuration = 42
   [providers.rest]
     insecure = true
   [providers.rancher]
@@ -384,3 +391,4 @@
   [experimental.devPlugin]
     goPath = "foobar"
     moduleName = "foobar"
+  kubernetesGateway = true

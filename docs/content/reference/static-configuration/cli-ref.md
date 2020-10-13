@@ -174,6 +174,9 @@ plugin's GOPATH.
 `--experimental.devplugin.modulename`:  
 plugin's module name.
 
+`--experimental.kubernetesgateway`:  
+Allow the k8s gateway api provider usage. (Default: ```false```)
+
 `--experimental.plugins.<name>.modulename`:  
 plugin's module name.
 
@@ -571,6 +574,27 @@ Kubernetes namespaces.
 Ingress refresh throttle duration (Default: ```0```)
 
 `--providers.kubernetescrd.token`:  
+Kubernetes bearer token (not needed for in-cluster client).
+
+`--providers.kubernetesgateway`:  
+Enable Kubernetes gateway api provider with default settings. (Default: ```false```)
+
+`--providers.kubernetesgateway.certauthfilepath`:  
+Kubernetes certificate authority file path (not needed for in-cluster client).
+
+`--providers.kubernetesgateway.endpoint`:  
+Kubernetes server endpoint (required for external cluster client).
+
+`--providers.kubernetesgateway.labelselector`:  
+Kubernetes label selector to use.
+
+`--providers.kubernetesgateway.namespaces`:  
+Kubernetes namespaces.
+
+`--providers.kubernetesgateway.throttleduration`:  
+Ingress refresh throttle duration (Default: ```0```)
+
+`--providers.kubernetesgateway.token`:  
 Kubernetes bearer token (not needed for in-cluster client).
 
 `--providers.kubernetesingress`:  
