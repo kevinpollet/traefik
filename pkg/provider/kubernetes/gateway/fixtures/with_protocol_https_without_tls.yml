@@ -19,11 +19,10 @@ spec:
       port: 443
       routes:
         kind: HTTPRoute
-        routeNamespaces:
+        namespaces:
           from: Same
-        routeSelector:
-          matchLabels:
-            app: foo
+        selector:
+          app: foo
 
 ---
 kind: HTTPRoute

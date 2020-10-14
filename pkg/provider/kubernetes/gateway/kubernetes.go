@@ -241,26 +241,20 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 				continue
 			}
 
-			httpRoutes, exist, err := client.GetHTTPRoutes(gateway.Namespace, labels.SelectorFromSet(listener.Routes.RouteSelector.MatchLabels))
+			httpRoutes, exist, err := client.GetHTTPRoutes(gateway.Namespace, labels.SelectorFromSet(listener.Routes.Selector.MatchLabels))
 			if err != nil {
-				logger.Errorf("Cannot fetch HTTPRoutes for namespace %q and matchLabels %v", gateway.Namespace, listener.Routes.RouteSelector.MatchLabels)
+				logger.Errorf("Cannot fetch HTTPRoutes for namespace %q and matchLabels %v", gateway.Namespace, listener.Routes.Selector.MatchLabels)
 			}
 			if !exist {
-				logger.Errorf("No match for HTTPRoute with namespace %q and matchLabels %v", gateway.Namespace, listener.Routes.RouteSelector.MatchLabels)
+				logger.Errorf("No match for HTTPRoute with namespace %q and matchLabels %v", gateway.Namespace, listener.Routes.Selector.MatchLabels)
 			}
 
 			for _, httpRoute := range httpRoutes {
-				hostRule := ""
-				if len(httpRoute.Spec.Hostnames) > 0 {
-					hostnames := make([]string, len(httpRoute.Spec.Hostnames))
-					for i, hostname := range httpRoute.Spec.Hostnames {
-						hostnames[i] = string(hostname)
-					}
-
-					hostRule += "Host(`"
-					hostRule += strings.Join(hostnames, "`, `")
-					hostRule += "`)"
+				if httpRoute == nil {
+					continue
 				}
+
+				hostRule := hostRule(httpRoute.Spec)
 
 				for _, routeRule := range httpRoute.Spec.Rules {
 					router := dynamic.Router{
@@ -320,6 +314,24 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 	}
 
 	return conf
+}
+
+func hostRule(httpRouteSpec v1alpha1.HTTPRouteSpec) string {
+	if len(httpRouteSpec.Hostnames) > 0 {
+		hostRule := ""
+		for i, hostname := range httpRouteSpec.Hostnames {
+			if i > 0 && len(hostname) > 0 {
+				hostRule += "`, `"
+			}
+			hostRule += string(hostname)
+		}
+
+		if hostRule != "" {
+			return "Host(`" + hostRule + "`)"
+		}
+	}
+
+	return ""
 }
 
 func extractRule(routeRule v1alpha1.HTTPRouteRule, hostRule string) string {

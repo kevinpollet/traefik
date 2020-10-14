@@ -1,3 +1,4 @@
+
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -306,8 +307,8 @@ spec:
                           kind:
                             description: "Kind is the kind of the route resource to select. \n Kind MUST correspond to kinds of routes that are compatible with the application protocol specified in the Listener's Protocol field. \n If an implementation does not support or recognize this resource type, it SHOULD raise a \"ConditionInvalidRoutes\" condition for the affected Listener. \n Support: Core"
                             type: string
-                          routeNamespaces:
-                            description: "RouteNamespaces indicates in which namespaces Routes should be selected for this Gateway. This is restricted to the namespace of this Gateway by default. \n Support: Core"
+                          namespaces:
+                            description: "Namespaces indicates in which namespaces Routes should be selected for this Gateway. This is restricted to the namespace of this Gateway by default. \n Support: Core"
                             properties:
                               from:
                                 description: "From indicates where Routes will be selected for this Gateway. Possible values are: * All: Routes in all namespaces may be used by this Gateway. * Selector: Routes in namespaces selected by the selector may be used by   this Gateway. * Same: Only Routes in the same namespace may be used by this Gateway. \n Support: Core"
@@ -347,8 +348,8 @@ spec:
                                     type: object
                                 type: object
                             type: object
-                          routeSelector:
-                            description: "RouteSelector specifies a set of route labels used for selecting routes to associate with the Gateway. If RouteSelector is defined, only routes matching the RouteSelector are associated with the Gateway. An empty RouteSelector matches all routes. \n Support: Core"
+                          selector:
+                            description: "Selector specifies a set of route labels used for selecting routes to associate with the Gateway. If RouteSelector is defined, only routes matching the RouteSelector are associated with the Gateway. An empty RouteSelector matches all routes. \n Support: Core"
                             properties:
                               matchExpressions:
                                 description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
@@ -379,7 +380,7 @@ spec:
                             type: object
                         required:
                           - kind
-                          - routeNamespaces
+                          - namespaces
                         type: object
                       tls:
                         description: "TLS is the TLS configuration for the Listener. This field is required if the Protocol field is \"HTTPS\" or \"TLS\" and ignored otherwise. \n The association of SNIs to Certificate defined in GatewayTLSConfig is defined based on the Hostname field for this listener: - \"Domain\": Certificate should be used for the domain and its   first-level subdomains. - \"Exact\": Certificate should be used for the domain only. - \"Any\": Certificate in GatewayTLSConfig is the default certificate to use. \n The GatewayClass MUST use the longest matching SNI out of all available certificates for any TLS handshake. \n Support: Core"
@@ -924,10 +925,10 @@ spec:
                               type: string
                             weight:
                               default: 1
-                              description: "Weight specifies the proportion of traffic forwarded to the backend referenced by the ServiceName or BackendRef field. computed as weight/(sum of all weights in this ForwardTo list). Weight is not a percentage and the sum of weights does not need to equal 100. If only one backend is specified, 100% of the traffic is forwarded to that backend. If unspecified, weight defaults to 1. \n Support: Core"
+                              description: "Weight specifies the proportion of traffic forwarded to the backend referenced by the ServiceName or BackendRef field. computed as weight/(sum of all weights in this ForwardTo list). Weight is not a percentage and the sum of weights does not need to equal 100. If only one backend is specified, 100% of the traffic is forwarded to that backend. If weight is set to 0, no traffic should be forwarded for this entry. If unspecified, weight defaults to 1. \n Support: Core"
                               format: int32
                               maximum: 10000
-                              minimum: 1
+                              minimum: 0
                               type: integer
                           type: object
                         maxItems: 4
@@ -969,9 +970,10 @@ spec:
                               properties:
                                 type:
                                   default: Exact
-                                  description: "HeaderMatchType specifies how to match a HTTP request header against the Values map. \n Support: core (Exact) Support: custom (ImplementationSpecific) \n Default: \"Exact\""
+                                  description: "Type specifies how to match against the value of the header. \n Support: core (Exact) Support: custom (RegularExpression, ImplementationSpecific) \n Since RegularExpression PathType has custom conformance, implementations can support POSIX, PCRE or any other dialects of regular expressions. Please read the implementation's documentation to determine the supported dialect."
                                   enum:
                                     - Exact
+                                    - RegularExpression
                                     - ImplementationSpecific
                                   type: string
                                 values:
@@ -990,7 +992,7 @@ spec:
                               properties:
                                 type:
                                   default: Prefix
-                                  description: "Type specifies how to match against the path Value. \n Support: core (Exact, Prefix) Support: custom (RegularExpression, ImplementationSpecific) \n Since RegularExpression PathType has custom conformance, implementations can support POSIX, PCRE or any other dialects of regular expressions. Please read the implementation's documentation to determine the supported dialect. \n Default: \"Prefix\""
+                                  description: "Type specifies how to match against the path Value. \n Support: core (Exact, Prefix) Support: custom (RegularExpression, ImplementationSpecific) \n Since RegularExpression PathType has custom conformance, implementations can support POSIX, PCRE or any other dialects of regular expressions. Please read the implementation's documentation to determine the supported dialect."
                                   enum:
                                     - Exact
                                     - Prefix

@@ -809,6 +809,70 @@ func TestGetServicePort(t *testing.T) {
 	}
 }
 
+func TestHostRule(t *testing.T) {
+	testCases := []struct {
+		desc         string
+		routeSpec    v1alpha1.HTTPRouteSpec
+		expectedRule string
+	}{
+		{
+			desc:         "Empty rule and matches",
+			expectedRule: "",
+		},
+		{
+			desc: "One Host",
+			routeSpec: v1alpha1.HTTPRouteSpec{
+				Hostnames: []v1alpha1.HTTPRouteHostname{
+					"Foo",
+				},
+			},
+			expectedRule: "Host(`Foo`)",
+		},
+		{
+			desc: "Multiple Hosts",
+			routeSpec: v1alpha1.HTTPRouteSpec{
+				Hostnames: []v1alpha1.HTTPRouteHostname{
+					"Foo",
+					"Bar",
+					"Bir",
+				},
+			},
+			expectedRule: "Host(`Foo`, `Bar`, `Bir`)",
+		},
+		{
+			desc: "Multiple Hosts with empty one",
+			routeSpec: v1alpha1.HTTPRouteSpec{
+				Hostnames: []v1alpha1.HTTPRouteHostname{
+					"Foo",
+					"",
+					"Bir",
+				},
+			},
+			expectedRule: "Host(`Foo`, `Bir`)",
+		},
+		{
+			desc: "Multiple empty hosts",
+			routeSpec: v1alpha1.HTTPRouteSpec{
+				Hostnames: []v1alpha1.HTTPRouteHostname{
+					"",
+					"",
+					"",
+				},
+			},
+			expectedRule: "",
+		},
+	}
+
+	for _, test := range testCases {
+		test := test
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, test.expectedRule, hostRule(test.routeSpec))
+		})
+	}
+}
+
 func TestExtractRule(t *testing.T) {
 	testCases := []struct {
 		desc         string
