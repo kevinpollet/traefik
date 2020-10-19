@@ -2,7 +2,7 @@
 kind: GatewayClass
 apiVersion: networking.x-k8s.io/v1alpha1
 metadata:
-  name: acme-lb
+  name: my-gateway-class
 spec:
   controller: traefik.io/gateway-controller
 
@@ -13,16 +13,12 @@ metadata:
   name: my-gateway
   namespace: default
 spec:
-  gatewayClassName: acme-lb
-  listeners:  # Use GatewayClass defaults for listener definition.
+  gatewayClassName: my-gateway-class
+  listeners:
     - protocol: HTTP
       port: 8180
       routes:
         kind: HTTPRoute
-        namespaces:
-          from: Same
-        selector:
-          app: foo
 
 ---
 kind: HTTPRoute
@@ -42,4 +38,5 @@ spec:
             value: /bar
       forwardTo:
         - serviceName: whoami
+          port: 80
           weight: 1

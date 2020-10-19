@@ -12,7 +12,7 @@ The Kubernetes Gateway API, The Experimental Way.
     kind: GatewayClass
     apiVersion: networking.x-k8s.io/v1alpha1
     metadata:
-      name: acme-lb
+      name: my-gateway-class
     spec:
       controller: traefik.io/gateway-controller
     
@@ -23,7 +23,7 @@ The Kubernetes Gateway API, The Experimental Way.
       name: my-gateway
       namespace: default
     spec:
-      gatewayClassName: acme-lb
+      gatewayClassName: my-gateway-class
       listeners:  # Use GatewayClass defaults for listener definition.
         - protocol: HTTP
           port: 80
@@ -195,7 +195,7 @@ creating `GatewayClass` objects.
     kind: GatewayClass
     apiVersion: networking.x-k8s.io/v1alpha1
     metadata:
-      name: acme-lb
+      name: my-gateway-class
     spec:
       # Controller is a domain/path string that indicates
       # the controller that is managing Gateways of this class.
@@ -220,7 +220,7 @@ Kubernetes cluster before creating `Gateway` objects.
       name: my-gateway
       namespace: default
     spec:
-      gatewayClassName: acme-lb      # [1]
+      gatewayClassName: my-gateway-class      # [1]
       listeners:                     # [2]
         - protocol: HTTPS            # [3] 
           port: 443                  # [4]

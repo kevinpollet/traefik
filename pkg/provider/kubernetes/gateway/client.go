@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -14,7 +15,6 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/service-apis/apis/v1alpha1"
 	"sigs.k8s.io/service-apis/pkg/client/clientset/versioned"
@@ -32,6 +32,17 @@ func (reh *resourceEventHandler) OnAdd(obj interface{}) {
 }
 
 func (reh *resourceEventHandler) OnUpdate(oldObj, newObj interface{}) {
+	//switch o := oldObj.(type) {
+	//case *v1alpha1.GatewayClass:
+	//	// We only need to process modifications on the Spec.Controller attribute
+	//	n := newObj.(*v1alpha1.GatewayClass)
+	//	if o.Spec.Controller == n.Spec.Controller {
+	//		return
+	//	}
+	//	eventHandlerFunc(reh.ev, newObj)
+	//default:
+	//	eventHandlerFunc(reh.ev, newObj)
+	//}
 	eventHandlerFunc(reh.ev, newObj)
 }
 
@@ -45,8 +56,9 @@ func (reh *resourceEventHandler) OnDelete(obj interface{}) {
 type Client interface {
 	WatchAll(namespaces []string, stopCh <-chan struct{}) (<-chan interface{}, error)
 
-	GetGatewayClasses() []*v1alpha1.GatewayClass
-	GetGateways() []*v1alpha1.Gateway
+	GetGatewayClasses() ([]*v1alpha1.GatewayClass, error)
+	UpdateGatewayClassStatus(v1alpha1.GatewayClass) error
+	GetGateways() ([]*v1alpha1.Gateway, error)
 	GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, bool, error)
 
 	GetService(namespace, name string) (*corev1.Service, bool, error)
@@ -61,10 +73,12 @@ type clientWrapper struct {
 	factoriesGateway map[string]externalversions.SharedInformerFactory
 	factoriesKube    map[string]informers.SharedInformerFactory
 
-	labelSelector labels.Selector
-
 	isNamespaceAll    bool
 	watchedNamespaces []string
+}
+
+func (c *clientWrapper) UpdateGatewayClassStatus(gatewayClass v1alpha1.GatewayClass) error {
+	panic("implement me")
 }
 
 func createClientFromConfig(c *rest.Config) (*clientWrapper, error) {
@@ -81,9 +95,9 @@ func createClientFromConfig(c *rest.Config) (*clientWrapper, error) {
 	return newClientImpl(csKube, csCrd), nil
 }
 
-func newClientImpl(csKube *kubernetes.Clientset, csCrd *versioned.Clientset) *clientWrapper {
+func newClientImpl(csKube *kubernetes.Clientset, csGateway *versioned.Clientset) *clientWrapper {
 	return &clientWrapper{
-		csGateway:        csCrd,
+		csGateway:        csGateway,
 		csKube:           csKube,
 		factoriesGateway: make(map[string]externalversions.SharedInformerFactory),
 		factoriesKube:    make(map[string]informers.SharedInformerFactory),
@@ -141,7 +155,7 @@ func newExternalClusterClient(endpoint, token, caFilePath string) (*clientWrappe
 // WatchAll starts namespace-specific controllers for all relevant kinds.
 func (c *clientWrapper) WatchAll(namespaces []string, stopCh <-chan struct{}) (<-chan interface{}, error) {
 	eventCh := make(chan interface{}, 1)
-	eventHandler := c.newResourceEventHandler(eventCh)
+	eventHandler := &resourceEventHandler{ev: eventCh}
 
 	if len(namespaces) == 0 {
 		namespaces = []string{metav1.NamespaceAll}
@@ -150,17 +164,18 @@ func (c *clientWrapper) WatchAll(namespaces []string, stopCh <-chan struct{}) (<
 	c.watchedNamespaces = namespaces
 
 	for _, ns := range namespaces {
-		factoryCrd := externalversions.NewSharedInformerFactoryWithOptions(c.csGateway, resyncPeriod, externalversions.WithNamespace(ns))
-		factoryCrd.Networking().V1alpha1().GatewayClasses().Informer().AddEventHandler(eventHandler)
-		factoryCrd.Networking().V1alpha1().Gateways().Informer().AddEventHandler(eventHandler)
-		factoryCrd.Networking().V1alpha1().HTTPRoutes().Informer().AddEventHandler(eventHandler)
+		factoryGateway := externalversions.NewSharedInformerFactoryWithOptions(c.csGateway, resyncPeriod, externalversions.WithNamespace(ns))
+		factoryGateway.Networking().V1alpha1().GatewayClasses().Informer().AddEventHandler(eventHandler)
+		factoryGateway.Networking().V1alpha1().Gateways().Informer().AddEventHandler(eventHandler)
+		factoryGateway.Networking().V1alpha1().HTTPRoutes().Informer().AddEventHandler(eventHandler)
 
 		factoryKube := informers.NewSharedInformerFactoryWithOptions(c.csKube, resyncPeriod, informers.WithNamespace(ns))
+		factoryKube.Extensions().V1beta1().Ingresses().Informer().AddEventHandler(eventHandler)
 		factoryKube.Core().V1().Services().Informer().AddEventHandler(eventHandler)
 		factoryKube.Core().V1().Endpoints().Informer().AddEventHandler(eventHandler)
 		factoryKube.Core().V1().Secrets().Informer().AddEventHandler(eventHandler)
 
-		c.factoriesGateway[ns] = factoryCrd
+		c.factoriesGateway[ns] = factoryGateway
 		c.factoriesKube[ns] = factoryKube
 	}
 
@@ -190,39 +205,58 @@ func (c *clientWrapper) GetHTTPRoutes(namespace string, selector labels.Selector
 	if !c.isWatchedNamespace(namespace) {
 		return nil, false, fmt.Errorf("failed to get HTTPRoute %s with labels selector %s: namespace is not within watched namespaces", namespace, selector)
 	}
-
-	service, err := c.factoriesGateway[c.lookupNamespace(namespace)].Networking().V1alpha1().HTTPRoutes().Lister().HTTPRoutes(namespace).List(selector)
+	// TODO add label selector
+	service, err := c.factoriesGateway[c.lookupNamespace(namespace)].Networking().V1alpha1().HTTPRoutes().Lister().HTTPRoutes(namespace).List(labels.Everything())
 	exist, err := translateNotFoundError(err)
 
 	return service, exist, err
 }
 
-func (c *clientWrapper) GetGateways() []*v1alpha1.Gateway {
+func (c *clientWrapper) GetGateways() ([]*v1alpha1.Gateway, error) {
 	var result []*v1alpha1.Gateway
 
 	for ns, factory := range c.factoriesGateway {
-		gateways, err := factory.Networking().V1alpha1().Gateways().Lister().List(c.labelSelector)
+		// TODO: add real label selector
+		gateways, err := factory.Networking().V1alpha1().Gateways().Lister().List(labels.Everything())
 		if err != nil {
-			log.WithoutContext().Errorf("Failed to list Gateways in namespace %s: %v", ns, err)
+			log.Errorf("Failed to list Gateways in namespace %s: %v", ns, err)
 		}
 		result = append(result, gateways...)
 	}
 
-	return result
+	return result, nil
 }
 
-func (c *clientWrapper) GetGatewayClasses() []*v1alpha1.GatewayClass {
+func (c *clientWrapper) GetGatewayClasses() ([]*v1alpha1.GatewayClass, error) {
 	var result []*v1alpha1.GatewayClass
 
 	for ns, factory := range c.factoriesGateway {
-		gatewayClasses, err := factory.Networking().V1alpha1().GatewayClasses().Lister().List(c.labelSelector)
+		// TODO: add real label selector
+		gatewayClasses, err := factory.Networking().V1alpha1().GatewayClasses().Lister().List(labels.Everything())
 		if err != nil {
-			log.WithoutContext().Errorf("Failed to list GatewayClasses in namespace %s: %v", ns, err)
+			log.Errorf("Failed to list GatewayClasses in namespace %s: %v", ns, err)
 		}
 		result = append(result, gatewayClasses...)
 	}
 
-	return result
+	return result, nil
+}
+
+func (c *clientWrapper) UpdateGatewayClassInvalidParameterStatus(gatewayClass v1alpha1.GatewayClass, conditionType string, status metav1.ConditionStatus) error {
+	gc := gatewayClass.DeepCopy()
+	for _, condition := range gc.Status.Conditions {
+		// cf https://kubernetes-sigs.github.io/service-apis/concepts/#gatewayclass-status
+		if condition.Type == conditionType && condition.Status != status {
+			condition.Status = status
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := c.csGateway.NetworkingV1alpha1().GatewayClasses().UpdateStatus(ctx, gc, metav1.UpdateOptions{})
+
+	return err
 }
 
 // GetService returns the named service from the given namespace.
@@ -233,6 +267,7 @@ func (c *clientWrapper) GetService(namespace, name string) (*corev1.Service, boo
 
 	service, err := c.factoriesKube[c.lookupNamespace(namespace)].Core().V1().Services().Lister().Services(namespace).Get(name)
 	exist, err := translateNotFoundError(err)
+
 	return service, exist, err
 }
 
@@ -244,6 +279,7 @@ func (c *clientWrapper) GetEndpoints(namespace, name string) (*corev1.Endpoints,
 
 	endpoint, err := c.factoriesKube[c.lookupNamespace(namespace)].Core().V1().Endpoints().Lister().Endpoints(namespace).Get(name)
 	exist, err := translateNotFoundError(err)
+
 	return endpoint, exist, err
 }
 
@@ -255,6 +291,7 @@ func (c *clientWrapper) GetSecret(namespace, name string) (*corev1.Secret, bool,
 
 	secret, err := c.factoriesKube[c.lookupNamespace(namespace)].Core().V1().Secrets().Lister().Secrets(namespace).Get(name)
 	exist, err := translateNotFoundError(err)
+
 	return secret, exist, err
 }
 
@@ -269,25 +306,6 @@ func (c *clientWrapper) lookupNamespace(ns string) string {
 		return metav1.NamespaceAll
 	}
 	return ns
-}
-
-func (c *clientWrapper) newResourceEventHandler(events chan<- interface{}) cache.ResourceEventHandler {
-	return &cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			// Ignore Ingresses that do not match our custom label selector.
-			switch v := obj.(type) {
-			case *v1alpha1.GatewayClass:
-				return c.labelSelector.Matches(labels.Set(v.GetLabels()))
-			case *v1alpha1.Gateway:
-				return c.labelSelector.Matches(labels.Set(v.GetLabels()))
-			case *v1alpha1.HTTPRoute:
-				return c.labelSelector.Matches(labels.Set(v.GetLabels()))
-			default:
-				return true
-			}
-		},
-		Handler: &resourceEventHandler{ev: events},
-	}
 }
 
 // eventHandlerFunc will pass the obj on to the events channel or drop it.

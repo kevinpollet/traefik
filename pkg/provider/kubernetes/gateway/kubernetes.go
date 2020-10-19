@@ -31,10 +31,11 @@ const (
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Endpoint          string          `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
-	Token             string          `description:"Kubernetes bearer token (not needed for in-cluster client)." json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
-	CertAuthFilePath  string          `description:"Kubernetes certificate authority file path (not needed for in-cluster client)." json:"certAuthFilePath,omitempty" toml:"certAuthFilePath,omitempty" yaml:"certAuthFilePath,omitempty"`
-	Namespaces        []string        `description:"Kubernetes namespaces." json:"namespaces,omitempty" toml:"namespaces,omitempty" yaml:"namespaces,omitempty" export:"true"`
+	Endpoint         string   `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Token            string   `description:"Kubernetes bearer token (not needed for in-cluster client)." json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
+	CertAuthFilePath string   `description:"Kubernetes certificate authority file path (not needed for in-cluster client)." json:"certAuthFilePath,omitempty" toml:"certAuthFilePath,omitempty" yaml:"certAuthFilePath,omitempty"`
+	Namespaces       []string `description:"Kubernetes namespaces." json:"namespaces,omitempty" toml:"namespaces,omitempty" yaml:"namespaces,omitempty" export:"true"`
+	// TODO implement
 	LabelSelector     string          `description:"Kubernetes label selector to use." json:"labelSelector,omitempty" toml:"labelSelector,omitempty" yaml:"labelSelector,omitempty" export:"true"`
 	ThrottleDuration  ptypes.Duration `description:"Ingress refresh throttle duration" json:"throttleDuration,omitempty" toml:"throttleDuration,omitempty" yaml:"throttleDuration,omitempty"`
 	lastConfiguration safe.Safe
@@ -48,12 +49,12 @@ type Entrypoint struct {
 }
 
 func (p *Provider) newK8sClient(ctx context.Context) (*clientWrapper, error) {
-	labelSel, err := labels.Parse(p.LabelSelector)
-	if err != nil {
-		return nil, fmt.Errorf("invalid label selector: %q", p.LabelSelector)
-	}
-	log.FromContext(ctx).Infof("label selector is: %q", labelSel)
-
+	//labelSel, err := labels.Parse(p.LabelSelector)
+	//if err != nil {
+	//	return nil, fmt.Errorf("invalid label selector: %q", p.LabelSelector)
+	//}
+	//log.FromContext(ctx).Infof("label selector is: %q", labelSel)
+	var err error
 	withEndpoint := ""
 	if p.Endpoint != "" {
 		withEndpoint = fmt.Sprintf(" with endpoint %s", p.Endpoint)
@@ -72,9 +73,9 @@ func (p *Provider) newK8sClient(ctx context.Context) (*clientWrapper, error) {
 		client, err = newExternalClusterClient(p.Endpoint, p.Token, p.CertAuthFilePath)
 	}
 
-	if err == nil {
-		client.labelSelector = labelSel
-	}
+	//if err == nil {
+	//	client.labelSelector = labelSel
+	//}
 
 	return client, err
 }
@@ -90,7 +91,7 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 	ctxLog := log.With(context.Background(), log.Str(log.ProviderName, providerName))
 	logger := log.FromContext(ctxLog)
 
-	logger.Debugf("Using label selector: %q", p.LabelSelector)
+	//logger.Debugf("Using label selector: %q", p.LabelSelector)
 	k8sClient, err := p.newK8sClient(ctxLog)
 	if err != nil {
 		return err
@@ -187,13 +188,26 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 	allowedGateway := map[string]struct{}{}
 
-	for _, gatewayClass := range client.GetGatewayClasses() {
+	gatewayClasses, err := client.GetGatewayClasses()
+	if err != nil {
+		logger.Errorf("Cannot found GatewayClasses : %v", err)
+		return conf
+	}
+
+	for _, gatewayClass := range gatewayClasses {
 		if gatewayClass.Spec.Controller == "traefik.io/gateway-controller" {
 			allowedGateway[gatewayClass.Name] = struct{}{}
+			// TODO update gatewayclass status ?
 		}
 	}
 
-	for _, gateway := range client.GetGateways() {
+	// TODO check if we can only use the default filtering mechanism
+	gateways, err := client.GetGateways()
+	if err != nil {
+		logger.Errorf("Cannot found Gateways : %v", err)
+	}
+
+	for _, gateway := range gateways {
 		if _, ok := allowedGateway[gateway.Spec.GatewayClassName]; !ok {
 			continue
 		}
@@ -241,6 +255,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 				continue
 			}
 
+			logger.Infof("Before getHTTPRoutes with gateway.Namespace: %s", gateway.Namespace)
 			httpRoutes, exist, err := client.GetHTTPRoutes(gateway.Namespace, labels.SelectorFromSet(listener.Routes.Selector.MatchLabels))
 			if err != nil {
 				logger.Errorf("Cannot fetch HTTPRoutes for namespace %q and matchLabels %v", gateway.Namespace, listener.Routes.Selector.MatchLabels)
@@ -352,9 +367,12 @@ func extractRule(routeRule v1alpha1.HTTPRouteRule, hostRule string) string {
 		// TODO handle other headers types
 		if match.Headers != nil && match.Headers.Type == v1alpha1.HeaderMatchExact {
 			var headerRules []string
+
 			for headerName, headerValue := range match.Headers.Values {
 				headerRules = append(headerRules, "Headers(`"+headerName+"`,`"+headerValue+"`)")
 			}
+			// to have a consistent order
+			sort.Strings(headerRules)
 			matchRules = append(matchRules, headerRules...)
 		}
 
@@ -386,7 +404,7 @@ func extractRule(routeRule v1alpha1.HTTPRouteRule, hostRule string) string {
 	return rule + "(" + strings.Join(matchesRules, " || ") + ")"
 }
 
-func (p *Provider) entryPointName(port int32, protocol v1alpha1.ProtocolType) (string, error) {
+func (p *Provider) entryPointName(port v1alpha1.PortNumber, protocol v1alpha1.ProtocolType) (string, error) {
 	entryPointName := ""
 	portStr := strconv.FormatInt(int64(port), 10)
 	for name, entryPoint := range p.EntryPoints {
@@ -404,38 +422,6 @@ func (p *Provider) entryPointName(port int32, protocol v1alpha1.ProtocolType) (s
 	}
 
 	return entryPointName, nil
-}
-
-func getServicePort(svc *corev1.Service, port int32) (*corev1.ServicePort, error) {
-	if svc == nil {
-		return nil, errors.New("service is not defined")
-	}
-
-	if port == 0 {
-		return nil, errors.New("service port not defined")
-	}
-
-	hasValidPort := false
-	for _, p := range svc.Spec.Ports {
-		if p.Port == port {
-			return &p, nil
-		}
-
-		if p.Port != 0 {
-			hasValidPort = true
-		}
-	}
-
-	if svc.Spec.Type != corev1.ServiceTypeExternalName {
-		return nil, fmt.Errorf("service port not found: %d", port)
-	}
-
-	if hasValidPort {
-		log.WithoutContext().
-			Warningf("The port %d from HTTPRoute doesn't match with ports defined in the ExternalName service %s/%s.", port, svc.Namespace, svc.Name)
-	}
-
-	return &corev1.ServicePort{Port: port}, nil
 }
 
 func makeRouterKey(rule, name string) (string, error) {
@@ -559,7 +545,7 @@ func loadServices(client Client, namespace string, targets []v1alpha1.HTTPRouteF
 				return nil, nil, errors.New("service not found")
 			}
 
-			if len(service.Spec.Ports) > 1 && forwardTo.Port == nil {
+			if len(service.Spec.Ports) > 1 && forwardTo.Port == 0 {
 				// If the port is unspecified and the backend is a Service
 				// object consisting of multiple port definitions, the route
 				// must be dropped from the Gateway. The controller should
@@ -576,7 +562,7 @@ func loadServices(client Client, namespace string, targets []v1alpha1.HTTPRouteF
 			var match bool
 
 			for _, p := range service.Spec.Ports {
-				if forwardTo.Port == nil || p.TargetPort.IntVal == *forwardTo.Port {
+				if forwardTo.Port == 0 || p.TargetPort.IntVal == int32(forwardTo.Port) {
 					portName = p.Name
 					portSpec = p
 					match = true

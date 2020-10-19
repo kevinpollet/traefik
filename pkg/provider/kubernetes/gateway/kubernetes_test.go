@@ -8,7 +8,6 @@ import (
 	"github.com/traefik/traefik/v2/pkg/config/dynamic"
 	"github.com/traefik/traefik/v2/pkg/provider"
 	"github.com/traefik/traefik/v2/pkg/tls"
-	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/service-apis/apis/v1alpha1"
 )
 
@@ -118,29 +117,6 @@ func TestLoadHTTPRoutes(t *testing.T) {
 				Address: ":80",
 			}},
 			paths: []string{"services.yml", "gatewayclass_with_unknown_controller.yml"},
-			expected: &dynamic.Configuration{
-				UDP: &dynamic.UDPConfiguration{
-					Routers:  map[string]*dynamic.UDPRouter{},
-					Services: map[string]*dynamic.UDPService{},
-				},
-				TCP: &dynamic.TCPConfiguration{
-					Routers:  map[string]*dynamic.TCPRouter{},
-					Services: map[string]*dynamic.TCPService{},
-				},
-				HTTP: &dynamic.HTTPConfiguration{
-					Routers:     map[string]*dynamic.Router{},
-					Middlewares: map[string]*dynamic.Middleware{},
-					Services:    map[string]*dynamic.Service{},
-				},
-				TLS: &dynamic.TLSConfiguration{},
-			},
-		},
-		{
-			desc: "Empty caused by multiport service with unspecified TargetPort",
-			entryPoints: map[string]Entrypoint{"web": {
-				Address: ":80",
-			}},
-			paths: []string{"services_multiple_ports.yml", "simple.yml"},
 			expected: &dynamic.Configuration{
 				UDP: &dynamic.UDPConfiguration{
 					Routers:  map[string]*dynamic.UDPRouter{},
@@ -594,10 +570,10 @@ func TestLoadHTTPRoutes(t *testing.T) {
 				},
 				HTTP: &dynamic.HTTPConfiguration{
 					Routers: map[string]*dynamic.Router{
-						"default-http-app-1-330d644a7f2079e8f454": {
+						"default-http-app-1-6211a6376ce8f78494a8": {
 							EntryPoints: []string{"web"},
-							Service:     "default-http-app-1-330d644a7f2079e8f454-wrr",
-							Rule:        "Host(`foo.com`) && PathPrefix(`/bar`) && Headers(`my-header`,`foo`) && Headers(`my-header2`,`bar`)",
+							Service:     "default-http-app-1-6211a6376ce8f78494a8-wrr",
+							Rule:        "Host(`foo.com`) && PathPrefix(`/bar`) && Headers(`my-header2`,`bar`) && Headers(`my-header`,`foo`)",
 						},
 						"default-http-app-1-fe80e69a38713941ea22": {
 							EntryPoints: []string{"web"},
@@ -607,7 +583,7 @@ func TestLoadHTTPRoutes(t *testing.T) {
 					},
 					Middlewares: map[string]*dynamic.Middleware{},
 					Services: map[string]*dynamic.Service{
-						"default-http-app-1-330d644a7f2079e8f454-wrr": {
+						"default-http-app-1-6211a6376ce8f78494a8-wrr": {
 							Weighted: &dynamic.WeightedRoundRobin{
 								Services: []dynamic.WRRService{
 									{
@@ -664,151 +640,6 @@ func TestLoadHTTPRoutes(t *testing.T) {
 	}
 }
 
-func TestGetServicePort(t *testing.T) {
-	testCases := []struct {
-		desc        string
-		svc         *corev1.Service
-		port        int32
-		expected    *corev1.ServicePort
-		expectError bool
-	}{
-		{
-			desc:        "Basic",
-			expectError: true,
-		},
-		{
-			desc: "Matching ports, with no service type",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{
-					Ports: []corev1.ServicePort{
-						{
-							Port: 80,
-						},
-					},
-				},
-			},
-			port: 80,
-			expected: &corev1.ServicePort{
-				Port: 80,
-			},
-		},
-		{
-			desc: "Matching ports 0",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{
-					Ports: []corev1.ServicePort{
-						{},
-					},
-				},
-			},
-			expectError: true,
-		},
-		{
-			desc: "Matching ports 0 (with external name)",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{
-					Type: corev1.ServiceTypeExternalName,
-					Ports: []corev1.ServicePort{
-						{},
-					},
-				},
-			},
-			expectError: true,
-		},
-		{
-			desc: "Mismatching, only port(Ingress) defined",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{},
-			},
-			port:        80,
-			expectError: true,
-		},
-		{
-			desc: "Mismatching, only port(Ingress) defined with external name",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{
-					Type: corev1.ServiceTypeExternalName,
-				},
-			},
-			port: 80,
-			expected: &corev1.ServicePort{
-				Port: 80,
-			},
-		},
-		{
-			desc: "Mismatching, only Service port defined",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{
-					Ports: []corev1.ServicePort{
-						{
-							Port: 80,
-						},
-					},
-				},
-			},
-			expectError: true,
-		},
-		{
-			desc: "Mismatching, only Service port defined with external name",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{
-					Type: corev1.ServiceTypeExternalName,
-					Ports: []corev1.ServicePort{
-						{
-							Port: 80,
-						},
-					},
-				},
-			},
-			expectError: true,
-		},
-		{
-			desc: "Two different ports defined",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{
-					Ports: []corev1.ServicePort{
-						{
-							Port: 80,
-						},
-					},
-				},
-			},
-			port:        443,
-			expectError: true,
-		},
-		{
-			desc: "Two different ports defined (with external name)",
-			svc: &corev1.Service{
-				Spec: corev1.ServiceSpec{
-					Type: corev1.ServiceTypeExternalName,
-					Ports: []corev1.ServicePort{
-						{
-							Port: 80,
-						},
-					},
-				},
-			},
-			port: 443,
-			expected: &corev1.ServicePort{
-				Port: 443,
-			},
-		},
-	}
-	for _, test := range testCases {
-		test := test
-		t.Run(test.desc, func(t *testing.T) {
-			t.Parallel()
-
-			actual, err := getServicePort(test.svc, test.port)
-			if test.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.Equal(t, test.expected, actual)
-			}
-		})
-	}
-}
-
 func TestHostRule(t *testing.T) {
 	testCases := []struct {
 		desc         string
@@ -822,7 +653,7 @@ func TestHostRule(t *testing.T) {
 		{
 			desc: "One Host",
 			routeSpec: v1alpha1.HTTPRouteSpec{
-				Hostnames: []v1alpha1.HTTPRouteHostname{
+				Hostnames: []v1alpha1.Hostname{
 					"Foo",
 				},
 			},
@@ -831,7 +662,7 @@ func TestHostRule(t *testing.T) {
 		{
 			desc: "Multiple Hosts",
 			routeSpec: v1alpha1.HTTPRouteSpec{
-				Hostnames: []v1alpha1.HTTPRouteHostname{
+				Hostnames: []v1alpha1.Hostname{
 					"Foo",
 					"Bar",
 					"Bir",
@@ -842,7 +673,7 @@ func TestHostRule(t *testing.T) {
 		{
 			desc: "Multiple Hosts with empty one",
 			routeSpec: v1alpha1.HTTPRouteSpec{
-				Hostnames: []v1alpha1.HTTPRouteHostname{
+				Hostnames: []v1alpha1.Hostname{
 					"Foo",
 					"",
 					"Bir",
@@ -853,7 +684,7 @@ func TestHostRule(t *testing.T) {
 		{
 			desc: "Multiple empty hosts",
 			routeSpec: v1alpha1.HTTPRouteSpec{
-				Hostnames: []v1alpha1.HTTPRouteHostname{
+				Hostnames: []v1alpha1.Hostname{
 					"",
 					"",
 					"",

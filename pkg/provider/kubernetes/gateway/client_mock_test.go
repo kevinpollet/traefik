@@ -38,6 +38,10 @@ type clientMock struct {
 	watchChan chan interface{}
 }
 
+func (c clientMock) UpdateGatewayClassStatus(class v1alpha1.GatewayClass) error {
+	return nil
+}
+
 func newClientMock(paths ...string) clientMock {
 	var c clientMock
 
@@ -71,12 +75,12 @@ func newClientMock(paths ...string) clientMock {
 	return c
 }
 
-func (c clientMock) GetGatewayClasses() []*v1alpha1.GatewayClass {
-	return c.gatewayClasses
+func (c clientMock) GetGatewayClasses() ([]*v1alpha1.GatewayClass, error) {
+	return c.gatewayClasses, nil
 }
 
-func (c clientMock) GetGateways() []*v1alpha1.Gateway {
-	return c.gateways
+func (c clientMock) GetGateways() ([]*v1alpha1.Gateway, error) {
+	return c.gateways, nil
 }
 
 func (c clientMock) GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, bool, error) {

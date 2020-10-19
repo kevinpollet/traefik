@@ -8,6 +8,8 @@ spec:
   ports:
     - name: web
       port: 80
+      # Explicitly set as it is unit test without defaulting to port value
+      targetPort: 80
   selector:
     app: containous
     task: whoami
@@ -38,6 +40,8 @@ spec:
   ports:
     - name: web
       port: 8080
+      # Explicitly set as it is unit test without defaulting to port value
+      targetPort: 8080
   selector:
     app: containous
     task: whoami2
@@ -99,6 +103,7 @@ spec:
   ports:
     - name: websecure2
       port: 8443
+      targetPort: 8443
       scheme: https
   selector:
     app: containous
@@ -141,6 +146,7 @@ spec:
   ports:
     - name: http
       protocol: TCP
+      targetPort: 80
       port: 80
 
 ---
@@ -156,6 +162,7 @@ spec:
     - name: https
       protocol: TCP
       port: 443
+      targetPort: 443
 
 
 

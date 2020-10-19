@@ -51,7 +51,7 @@ This provider is proposed as an experimental feature.
     kind: GatewayClass
     apiVersion: networking.x-k8s.io/v1alpha1
     metadata:
-      name: acme-lb
+      name: my-gateway-class
     spec:
       controller: traefik.io/gateway-controller
     
@@ -62,7 +62,7 @@ This provider is proposed as an experimental feature.
       name: my-gateway
       namespace: default
     spec:
-      gatewayClassName: acme-lb
+      gatewayClassName: my-gateway-class
       listeners:  # Use GatewayClass defaults for listener definition.
         - protocol: HTTP
           port: 80
