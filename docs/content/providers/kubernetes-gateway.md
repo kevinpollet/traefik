@@ -209,7 +209,7 @@ Traefik uses Kubernetes
 [Custom Resource Definition](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
 to retrieve its routing configuration.
 
-All concepts can be found in the official API concepts [documentation](https://kubernetes-sigs.github.io/service-apis/concepts/).
+All concepts can be found in the official API concepts [documentation](https://kubernetes-sigs.github.io/service-apis/api-overview/).
 The implemented resources by Traefik :
 
 * `GatewayClass` defines a set of Gateways that share a common configuration and behaviour.

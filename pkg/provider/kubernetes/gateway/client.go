@@ -252,7 +252,7 @@ func (c *clientWrapper) UpdateGatewayClassStatus(gatewayClass *v1alpha1.GatewayC
 	index := -1
 
 	for i, c := range gc.Status.Conditions {
-		// cf https://kubernetes-sigs.github.io/service-apis/concepts/#gatewayclass-status
+		// cf https://kubernetes-sigs.github.io/service-apis/gatewayclass/#gatewayclass-status
 		if c.Type == condition.Type && c.Status != condition.Status {
 			index = i
 			continue
