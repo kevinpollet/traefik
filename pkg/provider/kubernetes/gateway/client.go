@@ -32,18 +32,13 @@ func (reh *resourceEventHandler) OnAdd(obj interface{}) {
 }
 
 func (reh *resourceEventHandler) OnUpdate(oldObj, newObj interface{}) {
-	//switch o := oldObj.(type) {
-	//case *v1alpha1.GatewayClass:
-	//	// We only need to process modifications on the Spec.Controller attribute
-	//	n := newObj.(*v1alpha1.GatewayClass)
-	//	if o.Spec.Controller == n.Spec.Controller {
-	//		return
-	//	}
-	//	eventHandlerFunc(reh.ev, newObj)
-	//default:
-	//	eventHandlerFunc(reh.ev, newObj)
-	//}
-	eventHandlerFunc(reh.ev, newObj)
+	switch oldObj.(type) {
+	case *v1alpha1.GatewayClass:
+		// Skip update for gateway classes. We only manage addition or deletion for this cluster-wide resource.
+		return
+	default:
+		eventHandlerFunc(reh.ev, newObj)
+	}
 }
 
 func (reh *resourceEventHandler) OnDelete(obj interface{}) {
@@ -57,9 +52,10 @@ type Client interface {
 	WatchAll(namespaces []string, stopCh <-chan struct{}) (<-chan interface{}, error)
 
 	GetGatewayClasses() ([]*v1alpha1.GatewayClass, error)
-	UpdateGatewayClassStatus(v1alpha1.GatewayClass) error
+	UpdateGatewayStatus(gateway *v1alpha1.Gateway, gatewayStatus v1alpha1.GatewayStatus) error
+	UpdateGatewayClassStatus(gatewayClass *v1alpha1.GatewayClass, condition metav1.Condition) error
 	GetGateways() ([]*v1alpha1.Gateway, error)
-	GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, bool, error)
+	GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, error)
 
 	GetService(namespace, name string) (*corev1.Service, bool, error)
 	GetSecret(namespace, name string) (*corev1.Secret, bool, error)
@@ -70,19 +66,18 @@ type clientWrapper struct {
 	csGateway *versioned.Clientset
 	csKube    *kubernetes.Clientset
 
-	factoriesGateway map[string]externalversions.SharedInformerFactory
-	factoriesKube    map[string]informers.SharedInformerFactory
+	factoryGatewayClass externalversions.SharedInformerFactory
+	factoriesGateway    map[string]externalversions.SharedInformerFactory
+	factoriesKube       map[string]informers.SharedInformerFactory
 
 	isNamespaceAll    bool
 	watchedNamespaces []string
-}
 
-func (c *clientWrapper) UpdateGatewayClassStatus(gatewayClass v1alpha1.GatewayClass) error {
-	panic("implement me")
+	labelSelector string
 }
 
 func createClientFromConfig(c *rest.Config) (*clientWrapper, error) {
-	csCrd, err := versioned.NewForConfig(c)
+	csGateway, err := versioned.NewForConfig(c)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +87,7 @@ func createClientFromConfig(c *rest.Config) (*clientWrapper, error) {
 		return nil, err
 	}
 
-	return newClientImpl(csKube, csCrd), nil
+	return newClientImpl(csKube, csGateway), nil
 }
 
 func newClientImpl(csKube *kubernetes.Clientset, csGateway *versioned.Clientset) *clientWrapper {
@@ -163,26 +158,36 @@ func (c *clientWrapper) WatchAll(namespaces []string, stopCh <-chan struct{}) (<
 	}
 	c.watchedNamespaces = namespaces
 
+	labelSelectorOptions := func(options *metav1.ListOptions) {
+		options.LabelSelector = c.labelSelector
+	}
+
+	c.factoryGatewayClass = externalversions.NewSharedInformerFactoryWithOptions(c.csGateway, resyncPeriod, externalversions.WithTweakListOptions(labelSelectorOptions))
+	c.factoryGatewayClass.Networking().V1alpha1().GatewayClasses().Informer().AddEventHandler(eventHandler)
+
 	for _, ns := range namespaces {
 		factoryGateway := externalversions.NewSharedInformerFactoryWithOptions(c.csGateway, resyncPeriod, externalversions.WithNamespace(ns))
-		factoryGateway.Networking().V1alpha1().GatewayClasses().Informer().AddEventHandler(eventHandler)
 		factoryGateway.Networking().V1alpha1().Gateways().Informer().AddEventHandler(eventHandler)
 		factoryGateway.Networking().V1alpha1().HTTPRoutes().Informer().AddEventHandler(eventHandler)
 
 		factoryKube := informers.NewSharedInformerFactoryWithOptions(c.csKube, resyncPeriod, informers.WithNamespace(ns))
-		factoryKube.Extensions().V1beta1().Ingresses().Informer().AddEventHandler(eventHandler)
 		factoryKube.Core().V1().Services().Informer().AddEventHandler(eventHandler)
 		factoryKube.Core().V1().Endpoints().Informer().AddEventHandler(eventHandler)
+		// TODO: filter the helm secrets https://github.com/traefik/traefik/pull/7562
 		factoryKube.Core().V1().Secrets().Informer().AddEventHandler(eventHandler)
 
 		c.factoriesGateway[ns] = factoryGateway
 		c.factoriesKube[ns] = factoryKube
 	}
 
+	c.factoryGatewayClass.Start(stopCh)
+
 	for _, ns := range namespaces {
 		c.factoriesGateway[ns].Start(stopCh)
 		c.factoriesKube[ns].Start(stopCh)
 	}
+
+	c.factoryGatewayClass.WaitForCacheSync(stopCh)
 
 	for _, ns := range namespaces {
 		for t, ok := range c.factoriesGateway[ns].WaitForCacheSync(stopCh) {
@@ -201,15 +206,20 @@ func (c *clientWrapper) WatchAll(namespaces []string, stopCh <-chan struct{}) (<
 	return eventCh, nil
 }
 
-func (c *clientWrapper) GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, bool, error) {
+func (c *clientWrapper) GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, error) {
 	if !c.isWatchedNamespace(namespace) {
-		return nil, false, fmt.Errorf("failed to get HTTPRoute %s with labels selector %s: namespace is not within watched namespaces", namespace, selector)
+		return nil, fmt.Errorf("failed to get HTTPRoute %s with labels selector %s: namespace is not within watched namespaces", namespace, selector)
 	}
-	// TODO add label selector
-	service, err := c.factoriesGateway[c.lookupNamespace(namespace)].Networking().V1alpha1().HTTPRoutes().Lister().HTTPRoutes(namespace).List(labels.Everything())
-	exist, err := translateNotFoundError(err)
+	httpRoutes, err := c.factoriesGateway[c.lookupNamespace(namespace)].Networking().V1alpha1().HTTPRoutes().Lister().HTTPRoutes(namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
 
-	return service, exist, err
+	if len(httpRoutes) == 0 {
+		return nil, fmt.Errorf("failed to get HTTPRoute %s with labels selector %s: namespace is not within watched namespaces", namespace, selector)
+	}
+
+	return httpRoutes, nil
 }
 
 func (c *clientWrapper) GetGateways() ([]*v1alpha1.Gateway, error) {
@@ -228,35 +238,108 @@ func (c *clientWrapper) GetGateways() ([]*v1alpha1.Gateway, error) {
 }
 
 func (c *clientWrapper) GetGatewayClasses() ([]*v1alpha1.GatewayClass, error) {
-	var result []*v1alpha1.GatewayClass
-
-	for ns, factory := range c.factoriesGateway {
-		// TODO: add real label selector
-		gatewayClasses, err := factory.Networking().V1alpha1().GatewayClasses().Lister().List(labels.Everything())
-		if err != nil {
-			log.Errorf("Failed to list GatewayClasses in namespace %s: %v", ns, err)
-		}
-		result = append(result, gatewayClasses...)
+	// TODO: add real label selector
+	gatewayClasses, err := c.factoryGatewayClass.Networking().V1alpha1().GatewayClasses().Lister().List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list GatewayClasses: %w", err)
 	}
 
-	return result, nil
+	return gatewayClasses, nil
 }
 
-func (c *clientWrapper) UpdateGatewayClassInvalidParameterStatus(gatewayClass v1alpha1.GatewayClass, conditionType string, status metav1.ConditionStatus) error {
+func (c *clientWrapper) UpdateGatewayClassStatus(gatewayClass *v1alpha1.GatewayClass, condition metav1.Condition) error {
 	gc := gatewayClass.DeepCopy()
-	for _, condition := range gc.Status.Conditions {
+	index := -1
+
+	for i, c := range gc.Status.Conditions {
 		// cf https://kubernetes-sigs.github.io/service-apis/concepts/#gatewayclass-status
-		if condition.Type == conditionType && condition.Status != status {
-			condition.Status = status
+		if c.Type == condition.Type && c.Status != condition.Status {
+			index = i
+			continue
 		}
 	}
+
+	if index != -1 {
+		gc.Status.Conditions[index] = condition
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err := c.csGateway.NetworkingV1alpha1().GatewayClasses().UpdateStatus(ctx, gc, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to update GatewayClass %q status: %w", gatewayClass.Name, err)
+		}
+	}
+
+	return nil
+}
+
+func (c *clientWrapper) UpdateGatewayStatus(gateway *v1alpha1.Gateway, gatewayStatus v1alpha1.GatewayStatus) error {
+	if !c.isWatchedNamespace(gateway.Namespace) {
+		return fmt.Errorf("cannot update Gateway status %s/%s: namespace is not within watched namespaces", gateway.Namespace, gateway.Name)
+	}
+
+	g := gateway.DeepCopy()
+
+	if statusEquals(g.Status, gatewayStatus) {
+		return fmt.Errorf("cannot update Gateway status %s/%s: conditions are already up to date", gateway.Namespace, gateway.Name)
+	}
+
+	g.Status = gatewayStatus
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := c.csGateway.NetworkingV1alpha1().GatewayClasses().UpdateStatus(ctx, gc, metav1.UpdateOptions{})
+	_, err := c.csGateway.NetworkingV1alpha1().Gateways(gateway.Namespace).UpdateStatus(ctx, g, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update Gateway %q status: %w", gateway.Name, err)
+	}
 
-	return err
+	return nil
+}
+
+func statusEquals(oldStatus, newStatus v1alpha1.GatewayStatus) bool {
+	if len(oldStatus.Listeners) != len(newStatus.Listeners) {
+		return false
+	}
+
+	if !conditionsEquals(oldStatus.Conditions, newStatus.Conditions) {
+		return false
+	}
+
+	listenerMatches := 0
+	for _, newListener := range newStatus.Listeners {
+		for _, oldListener := range oldStatus.Listeners {
+			if newListener.Port == oldListener.Port {
+				if !conditionsEquals(newListener.Conditions, oldListener.Conditions) {
+					return false
+				}
+
+				listenerMatches++
+			}
+		}
+	}
+
+	return listenerMatches == len(oldStatus.Listeners)
+}
+
+func conditionsEquals(conditionsA, conditionsB []metav1.Condition) bool {
+	if len(conditionsA) != len(conditionsB) {
+		return false
+	}
+
+	conditionMatches := 0
+	for _, conditionA := range conditionsA {
+		for _, conditionB := range conditionsB {
+			if conditionA.Type == conditionB.Type {
+				if conditionA.Reason != conditionB.Reason || conditionA.Status != conditionB.Status || conditionA.Message != conditionB.Message {
+					return false
+				}
+				conditionMatches++
+			}
+		}
+	}
+
+	return conditionMatches == len(conditionsA)
 }
 
 // GetService returns the named service from the given namespace.

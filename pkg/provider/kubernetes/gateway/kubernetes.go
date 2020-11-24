@@ -21,6 +21,7 @@ import (
 	"github.com/traefik/traefik/v2/pkg/safe"
 	"github.com/traefik/traefik/v2/pkg/tls"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/service-apis/apis/v1alpha1"
 )
@@ -31,13 +32,12 @@ const (
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Endpoint         string   `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
-	Token            string   `description:"Kubernetes bearer token (not needed for in-cluster client)." json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
-	CertAuthFilePath string   `description:"Kubernetes certificate authority file path (not needed for in-cluster client)." json:"certAuthFilePath,omitempty" toml:"certAuthFilePath,omitempty" yaml:"certAuthFilePath,omitempty"`
-	Namespaces       []string `description:"Kubernetes namespaces." json:"namespaces,omitempty" toml:"namespaces,omitempty" yaml:"namespaces,omitempty" export:"true"`
-	// TODO implement
-	LabelSelector     string          `description:"Kubernetes label selector to use." json:"labelSelector,omitempty" toml:"labelSelector,omitempty" yaml:"labelSelector,omitempty" export:"true"`
-	ThrottleDuration  ptypes.Duration `description:"Ingress refresh throttle duration" json:"throttleDuration,omitempty" toml:"throttleDuration,omitempty" yaml:"throttleDuration,omitempty"`
+	Endpoint          string          `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Token             string          `description:"Kubernetes bearer token (not needed for in-cluster client)." json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
+	CertAuthFilePath  string          `description:"Kubernetes certificate authority file path (not needed for in-cluster client)." json:"certAuthFilePath,omitempty" toml:"certAuthFilePath,omitempty" yaml:"certAuthFilePath,omitempty"`
+	Namespaces        []string        `description:"Kubernetes namespaces." json:"namespaces,omitempty" toml:"namespaces,omitempty" yaml:"namespaces,omitempty" export:"true"`
+	LabelSelector     string          `description:"Kubernetes label selector to select specific GatewayClasses." json:"labelSelector,omitempty" toml:"labelSelector,omitempty" yaml:"labelSelector,omitempty" export:"true"`
+	ThrottleDuration  ptypes.Duration `description:"Kubernetes refresh throttle duration" json:"throttleDuration,omitempty" toml:"throttleDuration,omitempty" yaml:"throttleDuration,omitempty" export:"true`
 	lastConfiguration safe.Safe
 	EntryPoints       map[string]Entrypoint `json:"-" toml:"-" yaml:"-" label:"-" file:"-"`
 }
@@ -49,12 +49,13 @@ type Entrypoint struct {
 }
 
 func (p *Provider) newK8sClient(ctx context.Context) (*clientWrapper, error) {
-	//labelSel, err := labels.Parse(p.LabelSelector)
-	//if err != nil {
-	//	return nil, fmt.Errorf("invalid label selector: %q", p.LabelSelector)
-	//}
-	//log.FromContext(ctx).Infof("label selector is: %q", labelSel)
-	var err error
+	// Label selector validation
+	_, err := labels.Parse(p.LabelSelector)
+	if err != nil {
+		return nil, fmt.Errorf("invalid label selector: %q", p.LabelSelector)
+	}
+	log.FromContext(ctx).Infof("label selector is: %q", p.LabelSelector)
+
 	withEndpoint := ""
 	if p.Endpoint != "" {
 		withEndpoint = fmt.Sprintf(" with endpoint %s", p.Endpoint)
@@ -73,11 +74,12 @@ func (p *Provider) newK8sClient(ctx context.Context) (*clientWrapper, error) {
 		client, err = newExternalClusterClient(p.Endpoint, p.Token, p.CertAuthFilePath)
 	}
 
-	//if err == nil {
-	//	client.labelSelector = labelSel
-	//}
+	if err != nil {
+		return nil, err
+	}
+	client.labelSelector = p.LabelSelector
 
-	return client, err
+	return client, nil
 }
 
 // Init the provider.
@@ -91,7 +93,6 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 	ctxLog := log.With(context.Background(), log.Str(log.ProviderName, providerName))
 	logger := log.FromContext(ctxLog)
 
-	//logger.Debugf("Using label selector: %q", p.LabelSelector)
 	k8sClient, err := p.newK8sClient(ctxLog)
 	if err != nil {
 		return err
@@ -161,12 +162,9 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 	return nil
 }
 
+// nolint:funlen // TODO: refactor
 // TODO Handle errors and update resources statuses (gatewayClass, gateway).
 func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Client) *dynamic.Configuration {
-	tlsConfigs := make(map[string]*tls.CertAndStores)
-	routers := make(map[string]*dynamic.Router)
-	services := make(map[string]*dynamic.Service)
-
 	conf := &dynamic.Configuration{
 		UDP: &dynamic.UDPConfiguration{
 			Routers:  map[string]*dynamic.UDPRouter{},
@@ -197,7 +195,17 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 	for _, gatewayClass := range gatewayClasses {
 		if gatewayClass.Spec.Controller == "traefik.io/gateway-controller" {
 			allowedGateway[gatewayClass.Name] = struct{}{}
-			// TODO update gatewayclass status ?
+
+			err := client.UpdateGatewayClassStatus(gatewayClass, metav1.Condition{
+				Type:               "InvalidParameters",
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "Handled",
+				Message:            "Handled by Traefik controller",
+			})
+			if err != nil {
+				logger.Errorf("Failed to update InvalidParameters condition: %v", err)
+			}
 		}
 	}
 
@@ -208,30 +216,93 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 	}
 
 	for _, gateway := range gateways {
+		ctxLog := log.With(ctx, log.Str("Gateway", gateway.Namespace+"/"+gateway.Name))
+		logger := log.FromContext(ctxLog)
+
+		// As Status.Addresses is not implemented yet, initialize an empty array to follow the API expectations
+		gatewayStatus := v1alpha1.GatewayStatus{
+			Addresses: []v1alpha1.GatewayAddress{},
+		}
+
 		if _, ok := allowedGateway[gateway.Spec.GatewayClassName]; !ok {
+			gatewayStatus.Conditions = append(gatewayStatus.Conditions, metav1.Condition{
+				Type:               string(v1alpha1.GatewayConditionScheduled),
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             string(v1alpha1.GatewayReasonNoSuchGatewayClass),
+				Message:            "Cannot found matching GatewayClass",
+			})
+
+			err := client.UpdateGatewayStatus(gateway, gatewayStatus)
+			if err != nil {
+				logger.Debugf("An error occurred while updating gateway status: %v", err)
+			}
+
 			continue
 		}
 
-		for _, listener := range gateway.Spec.Listeners {
+		tlsConfigs := make(map[string]*tls.CertAndStores)
+		routers := make(map[string]*dynamic.Router)
+		services := make(map[string]*dynamic.Service)
+		listenerInError := false
+
+		// GatewayReasonListenersNotValid is used when one or more
+		// Listeners have an invalid or unsupported configuration
+		// and cannot be configured on the Gateway.
+		listenerStatuses := make([]v1alpha1.ListenerStatus, len(gateway.Spec.Listeners))
+		for i, listener := range gateway.Spec.Listeners {
+			listenerStatuses[i] = v1alpha1.ListenerStatus{
+				Port:       listener.Port,
+				Conditions: []metav1.Condition{},
+			}
+
 			ep, err := p.entryPointName(listener.Port, listener.Protocol)
 			if err != nil {
-				logger.Errorf("Cannot found entryPoint for Gateway %q : %v", gateway.Name, err)
+				msg := fmt.Sprintf("Cannot found entryPoint for Gateway : %v", err)
+				// update "Detached" status with "PortUnavailable" reason
+				listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+					Type:               string(v1alpha1.ListenerConditionDetached),
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             string(v1alpha1.ListenerReasonPortUnavailable),
+					Message:            msg,
+				})
+
+				logger.Errorf(msg)
+				listenerInError = true
 				continue
 			}
 
 			if listener.Protocol == v1alpha1.HTTPSProtocolType || listener.Protocol == v1alpha1.TLSProtocolType {
 				if listener.TLS == nil {
-					logger.Errorf("No TLS configuration for Gateway %q listener port %d and protocol %q", gateway.Name, listener.Port, listener.Protocol)
+					msg := fmt.Sprintf("No TLS configuration for Gateway Listener port %d and protocol %q", listener.Port, listener.Protocol)
+					// update "Detached" status with "UnsupportedProtocol" reason
+					listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+						Type:               string(v1alpha1.ListenerConditionDetached),
+						Status:             metav1.ConditionTrue,
+						LastTransitionTime: metav1.Now(),
+						Reason:             string(v1alpha1.ListenerReasonUnsupportedProtocol),
+						Message:            msg,
+					})
+
+					logger.Errorf(msg)
+					listenerInError = true
 					continue
 				}
 
-				if listener.TLS.CertificateRef.Name == "" {
-					logger.Errorf("Empty TLS CertificateRef secret name")
-					continue
-				}
+				if listener.TLS.CertificateRef.Kind != "Secret" || listener.TLS.CertificateRef.Group != "core" {
+					msg := fmt.Sprintf("Unsupported TLS CertificateRef group/kind : %v/%v", listener.TLS.CertificateRef.Group, listener.TLS.CertificateRef.Kind)
+					// update "ResolvedRefs" status true with "InvalidCertificateRef" reason
+					listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+						Type:               string(v1alpha1.ListenerConditionResolvedRefs),
+						Status:             metav1.ConditionTrue,
+						LastTransitionTime: metav1.Now(),
+						Reason:             string(v1alpha1.ListenerReasonInvalidCertificateRef),
+						Message:            msg,
+					})
 
-				if listener.TLS.CertificateRef.Kind != "Secret" && listener.TLS.CertificateRef.Group != "core" {
-					logger.Debugf("Unsupported TLS CertificateRef group/kind : %v/%v", listener.TLS.CertificateRef.Group, listener.TLS.CertificateRef.Kind)
+					logger.Errorf(msg)
+					listenerInError = true
 					continue
 				}
 
@@ -239,7 +310,18 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 				if _, tlsExists := tlsConfigs[configKey]; !tlsExists {
 					tlsConf, err := getTLS(client, listener.TLS.CertificateRef.Name, gateway.Namespace)
 					if err != nil {
-						logger.Errorf("Error while retrieving certificate: %v", err)
+						msg := fmt.Sprintf("Error while retrieving certificate: %v", err)
+						// update "ResolvedRefs" status true with "InvalidCertificateRef" reason
+						listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+							Type:               string(v1alpha1.ListenerConditionResolvedRefs),
+							Status:             metav1.ConditionFalse,
+							LastTransitionTime: metav1.Now(),
+							Reason:             string(v1alpha1.ListenerReasonInvalidCertificateRef),
+							Message:            msg,
+						})
+
+						logger.Errorf(msg)
+						listenerInError = true
 						continue
 					}
 
@@ -247,24 +329,60 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 				}
 			}
 
+			// Supported Protocol
 			if listener.Protocol != v1alpha1.HTTPProtocolType && listener.Protocol != v1alpha1.HTTPSProtocolType {
+				msg := fmt.Sprintf("Unsupported listener protocol %q", listener.Protocol)
+				// update "Detached" status true with "UnsupportedProtocol" reason
+				listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+					Type:               string(v1alpha1.ListenerConditionDetached),
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             string(v1alpha1.ListenerReasonUnsupportedProtocol),
+					Message:            msg,
+				})
+
+				logger.Errorf(msg)
+				listenerInError = true
 				continue
 			}
 
+			// Supported Route types
 			if listener.Routes.Kind != "HTTPRoute" {
+				msg := fmt.Sprintf("Unsupported Route Kind %q", listener.Routes.Kind)
+				// update "ResolvedRefs" status true with "InvalidRoutesRef" reason
+				listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+					Type:               string(v1alpha1.ListenerConditionResolvedRefs),
+					Status:             metav1.ConditionFalse,
+					LastTransitionTime: metav1.Now(),
+					Reason:             string(v1alpha1.ListenerReasonInvalidRoutesRef),
+					Message:            msg,
+				})
+
+				logger.Errorf(msg)
+				listenerInError = true
 				continue
 			}
 
-			logger.Infof("Before getHTTPRoutes with gateway.Namespace: %s", gateway.Namespace)
-			httpRoutes, exist, err := client.GetHTTPRoutes(gateway.Namespace, labels.SelectorFromSet(listener.Routes.Selector.MatchLabels))
+			// TODO: support RouteNamespaces
+			httpRoutes, err := client.GetHTTPRoutes(gateway.Namespace, labels.SelectorFromSet(listener.Routes.Selector.MatchLabels))
 			if err != nil {
-				logger.Errorf("Cannot fetch HTTPRoutes for namespace %q and matchLabels %v", gateway.Namespace, listener.Routes.Selector.MatchLabels)
-			}
-			if !exist {
-				logger.Errorf("No match for HTTPRoute with namespace %q and matchLabels %v", gateway.Namespace, listener.Routes.Selector.MatchLabels)
+				msg := fmt.Sprintf("Cannot fetch HTTPRoutes for namespace %q and matchLabels %v", gateway.Namespace, listener.Routes.Selector.MatchLabels)
+				// update "ResolvedRefs" status true with "InvalidRoutesRef" reason
+				listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+					Type:               string(v1alpha1.ListenerConditionResolvedRefs),
+					Status:             metav1.ConditionFalse,
+					LastTransitionTime: metav1.Now(),
+					Reason:             string(v1alpha1.ListenerReasonInvalidRoutesRef),
+					Message:            msg,
+				})
+
+				logger.Errorf(msg)
+				listenerInError = true
+				continue
 			}
 
 			for _, httpRoute := range httpRoutes {
+				// Should never happen
 				if httpRoute == nil {
 					continue
 				}
@@ -284,14 +402,36 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 					routerKey, err := makeRouterKey(router.Rule, makeID(httpRoute.Namespace, httpRoute.Name))
 					if err != nil {
-						logger.Errorf("Skipping HTTPRoute %s: cannot make router's key with rule %s: %v", httpRoute.Name, router.Rule, err)
+						msg := fmt.Sprintf("Skipping HTTPRoute %s: cannot make router's key with rule %s: %v", httpRoute.Name, router.Rule, err)
+						// update "ResolvedRefs" status true with "DroppedRoutes" reason
+						listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+							Type:               string(v1alpha1.ListenerConditionResolvedRefs),
+							Status:             metav1.ConditionFalse,
+							LastTransitionTime: metav1.Now(),
+							Reason:             string(v1alpha1.ListenerReasonDegradedRoutes),
+							Message:            msg,
+						})
+
+						logger.Errorf(msg)
+						// TODO update the RouteStatus condition / deduplicate conditions on listener
 						continue
 					}
 
 					if routeRule.ForwardTo != nil {
 						wrrService, subServices, err := loadServices(client, gateway.Namespace, routeRule.ForwardTo)
 						if err != nil {
-							logger.Errorf("Cannot load service from HTTPRoute %s/%s : %v", gateway.Namespace, httpRoute.Name, err)
+							msg := fmt.Sprintf("Cannot load service from HTTPRoute %s/%s : %v", gateway.Namespace, httpRoute.Name, err)
+							// update "ResolvedRefs" status true with "DroppedRoutes" reason
+							listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+								Type:               string(v1alpha1.ListenerConditionResolvedRefs),
+								Status:             metav1.ConditionFalse,
+								LastTransitionTime: metav1.Now(),
+								Reason:             string(v1alpha1.ListenerReasonDegradedRoutes),
+								Message:            msg,
+							})
+
+							logger.Errorf(msg)
+							// TODO update the RouteStatus condition / deduplicate conditions on listener
 							continue
 						}
 
@@ -311,20 +451,83 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 					}
 				}
 			}
+
+			if len(listenerStatuses[i].Conditions) == 0 {
+				// GatewayConditionReady "Ready", GatewayConditionReason "ListenerReady"
+				listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+					Type:               string(v1alpha1.ListenerConditionReady),
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             "ListenerReady",
+					Message:            "No error found",
+				})
+			} else {
+				listenerInError = true
+			}
 		}
-	}
 
-	if len(routers) > 0 {
-		conf.HTTP.Routers = routers
-	}
+		gatewayStatus.Listeners = listenerStatuses
 
-	if len(services) > 0 {
-		conf.HTTP.Services = services
-	}
+		if listenerInError {
+			// GatewayConditionReady "Ready", GatewayConditionReason "ListenersNotValid"
+			gatewayStatus.Conditions = append(gatewayStatus.Conditions, metav1.Condition{
+				Type:               string(v1alpha1.GatewayConditionReady),
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             string(v1alpha1.GatewayReasonListenersNotValid),
+				Message:            "All Listeners must be valid",
+			})
 
-	if len(tlsConfigs) > 0 {
-		conf.TLS = &dynamic.TLSConfiguration{
-			Certificates: getTLSConfig(tlsConfigs),
+			err := client.UpdateGatewayStatus(gateway, gatewayStatus)
+			if err != nil {
+				logger.Debugf("An error occurred while updating gateway status: %v", err)
+			}
+
+			continue
+		}
+
+		// update "Scheduled" status with "ResourcesAvailable" reason
+		gatewayStatus.Conditions = append(gatewayStatus.Conditions, metav1.Condition{
+			Type:               string(v1alpha1.GatewayConditionScheduled),
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
+			Reason:             "ResourcesAvailable",
+			Message:            "Found matching HTTPRoutes",
+		})
+
+		// update "Ready" status with "ListenersValid" reason
+		gatewayStatus.Conditions = append(gatewayStatus.Conditions, metav1.Condition{
+			Type:               string(v1alpha1.GatewayConditionReady),
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
+			Reason:             "ListenersValid",
+			Message:            "All listeners are valid",
+		})
+
+		err := client.UpdateGatewayStatus(gateway, gatewayStatus)
+		if err != nil {
+			logger.Debugf("An error occurred while updating gateway status: %v", err)
+		}
+
+		if len(routers) > 0 {
+			for k, router := range routers {
+				// TODO manage duplicate key
+				conf.HTTP.Routers[k] = router
+			}
+		}
+
+		if len(services) > 0 {
+			for k, service := range services {
+				// TODO manage duplicate key
+				conf.HTTP.Services[k] = service
+			}
+		}
+
+		if len(tlsConfigs) > 0 {
+			if conf.TLS == nil {
+				conf.TLS = &dynamic.TLSConfiguration{}
+			}
+			conf.TLS.Certificates = append(conf.TLS.Certificates, getTLSConfig(tlsConfigs)...)
 		}
 	}
 

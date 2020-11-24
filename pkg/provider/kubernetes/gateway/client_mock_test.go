@@ -7,6 +7,7 @@ import (
 
 	"github.com/traefik/traefik/v2/pkg/provider/kubernetes/k8s"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/service-apis/apis/v1alpha1"
@@ -36,10 +37,6 @@ type clientMock struct {
 	httpRoutes     []*v1alpha1.HTTPRoute
 
 	watchChan chan interface{}
-}
-
-func (c clientMock) UpdateGatewayClassStatus(class v1alpha1.GatewayClass) error {
-	return nil
 }
 
 func newClientMock(paths ...string) clientMock {
@@ -75,6 +72,51 @@ func newClientMock(paths ...string) clientMock {
 	return c
 }
 
+func (c clientMock) UpdateGatewayStatus(gateway *v1alpha1.Gateway, gatewayStatus v1alpha1.GatewayStatus) error {
+	for _, g := range c.gateways {
+		if g.Name == gateway.Name {
+			if !statusEquals(g.Status, gatewayStatus) {
+				g.Status = gatewayStatus
+				return nil
+			}
+			return fmt.Errorf("cannot update gateway %v", gateway.Name)
+		}
+	}
+	return nil
+}
+
+func (c clientMock) UpdateGatewayClassStatus(gatewayClass *v1alpha1.GatewayClass, condition metav1.Condition) error {
+	for _, gc := range c.gatewayClasses {
+		if gc.Name == gatewayClass.Name {
+			for _, c := range gc.Status.Conditions {
+				if c.Type == condition.Type && c.Status != condition.Status {
+					c.Status = condition.Status
+					c.LastTransitionTime = condition.LastTransitionTime
+					c.Message = condition.Message
+					c.Reason = condition.Reason
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (c clientMock) UpdateGatewayStatusConditions(gateway *v1alpha1.Gateway, condition metav1.Condition) error {
+	for _, g := range c.gatewayClasses {
+		if g.Name == gateway.Name {
+			for _, c := range g.Status.Conditions {
+				if c.Type == condition.Type && (c.Status != condition.Status || c.Reason != condition.Reason) {
+					c.Status = condition.Status
+					c.LastTransitionTime = condition.LastTransitionTime
+					c.Message = condition.Message
+					c.Reason = condition.Reason
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (c clientMock) GetGatewayClasses() ([]*v1alpha1.GatewayClass, error) {
 	return c.gatewayClasses, nil
 }
@@ -83,14 +125,15 @@ func (c clientMock) GetGateways() ([]*v1alpha1.Gateway, error) {
 	return c.gateways, nil
 }
 
-func (c clientMock) GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, bool, error) {
-	httpRoutes := []*v1alpha1.HTTPRoute{}
+func (c clientMock) GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, error) {
+	httpRoutes := make([]*v1alpha1.HTTPRoute, len(c.httpRoutes))
+
 	for _, httpRoute := range c.httpRoutes {
 		if httpRoute.Namespace == namespace && selector.Matches(labels.Set(httpRoute.Labels)) {
 			httpRoutes = append(httpRoutes, httpRoute)
 		}
 	}
-	return httpRoutes, len(httpRoutes) > 0, nil
+	return httpRoutes, nil
 }
 
 func (c clientMock) GetService(namespace, name string) (*corev1.Service, bool, error) {
