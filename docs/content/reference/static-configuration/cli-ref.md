@@ -555,9 +555,6 @@ Enable Kubernetes backend with default settings. (Default: ```false```)
 `--providers.kubernetescrd.certauthfilepath`:  
 Kubernetes certificate authority file path (not needed for in-cluster client).
 
-`--providers.kubernetescrd.disablepasshostheaders`:  
-Kubernetes disable PassHost Headers. (Default: ```false```)
-
 `--providers.kubernetescrd.endpoint`:  
 Kubernetes server endpoint (required for external cluster client).
 
@@ -586,13 +583,13 @@ Kubernetes certificate authority file path (not needed for in-cluster client).
 Kubernetes server endpoint (required for external cluster client).
 
 `--providers.kubernetesgateway.labelselector`:  
-Kubernetes label selector to use.
+Kubernetes label selector to select specific GatewayClasses.
 
 `--providers.kubernetesgateway.namespaces`:  
 Kubernetes namespaces.
 
 `--providers.kubernetesgateway.throttleduration`:  
-Ingress refresh throttle duration (Default: ```0```)
+Kubernetes refresh throttle duration (Default: ```0```)
 
 `--providers.kubernetesgateway.token`:  
 Kubernetes bearer token (not needed for in-cluster client).
@@ -602,9 +599,6 @@ Enable Kubernetes backend with default settings. (Default: ```false```)
 
 `--providers.kubernetesingress.certauthfilepath`:  
 Kubernetes certificate authority file path (not needed for in-cluster client).
-
-`--providers.kubernetesingress.disablepasshostheaders`:  
-Kubernetes disable PassHost Headers. (Default: ```false```)
 
 `--providers.kubernetesingress.endpoint`:  
 Kubernetes server endpoint (required for external cluster client).

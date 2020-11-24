@@ -63,7 +63,7 @@ This provider is proposed as an experimental feature.
       namespace: default
     spec:
       gatewayClassName: my-gateway-class
-      listeners:  # Use GatewayClass defaults for listener definition.
+      listeners:
         - protocol: HTTP
           port: 80
           routes:
@@ -263,20 +263,20 @@ Specifically, it may be set to the URL used by `kubectl proxy` to connect to a K
 _Optional, Default=empty_
 
 ```toml tab="File (TOML)"
-[providers.kubernetesCRD]
+[providers.kubernetesGateway]
   token = "mytoken"
   # ...
 ```
 
 ```yaml tab="File (YAML)"
 providers:
-  kubernetesCRD:
+  kubernetesGateway:
     token = "mytoken"
     # ...
 ```
 
 ```bash tab="CLI"
---providers.kubernetescrd.token=mytoken
+--providers.kubernetesgateway.token=mytoken
 ```
 
 Bearer token used for the Kubernetes client configuration.
@@ -286,20 +286,20 @@ Bearer token used for the Kubernetes client configuration.
 _Optional, Default=empty_
 
 ```toml tab="File (TOML)"
-[providers.kubernetesCRD]
+[providers.kubernetesGateway]
   certAuthFilePath = "/my/ca.crt"
   # ...
 ```
 
 ```yaml tab="File (YAML)"
 providers:
-  kubernetesCRD:
+  kubernetesGateway:
     certAuthFilePath: "/my/ca.crt"
     # ...
 ```
 
 ```bash tab="CLI"
---providers.kubernetescrd.certauthfilepath=/my/ca.crt
+--providers.kubernetesgateway.certauthfilepath=/my/ca.crt
 ```
 
 Path to the certificate authority file.
@@ -310,14 +310,14 @@ Used for the Kubernetes client configuration.
 _Optional, Default: all namespaces (empty array)_
 
 ```toml tab="File (TOML)"
-[providers.kubernetesCRD]
+[providers.kubernetesGateway]
   namespaces = ["default", "production"]
   # ...
 ```
 
 ```yaml tab="File (YAML)"
 providers:
-  kubernetesCRD:
+  kubernetesGateway:
     namespaces:
     - "default"
     - "production"
@@ -325,7 +325,7 @@ providers:
 ```
 
 ```bash tab="CLI"
---providers.kubernetescrd.namespaces=default,production
+--providers.kubernetesgateway.namespaces=default,production
 ```
 
 Array of namespaces to watch.
@@ -335,70 +335,44 @@ Array of namespaces to watch.
 _Optional,Default: empty (process all resources)_
 
 ```toml tab="File (TOML)"
-[providers.kubernetesCRD]
-  labelselector = "A and not B"
+[providers.kubernetesGateway]
+  labelselector = "app=traefik"
   # ...
 ```
 
 ```yaml tab="File (YAML)"
 providers:
-  kubernetesCRD:
-    labelselector: "A and not B"
+  kubernetesGateway:
+    labelselector: "app=traefik"
     # ...
 ```
 
 ```bash tab="CLI"
---providers.kubernetescrd.labelselector="A and not B"
+--providers.kubernetesgateway.labelselector="app=traefik"
 ```
 
 By default, Traefik processes all resource objects in the configured namespaces.
-A label selector can be defined to filter on specific resource objects only.
+A label selector can be defined to filter on specific GatewayClass objects only.
 
 See [label-selectors](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors) for details.
-
-### `ingressClass`
-
-_Optional, Default: empty_
-
-```toml tab="File (TOML)"
-[providers.kubernetesCRD]
-  ingressClass = "traefik-internal"
-  # ...
-```
-
-```yaml tab="File (YAML)"
-providers:
-  kubernetesCRD:
-    ingressClass: "traefik-internal"
-    # ...
-```
-
-```bash tab="CLI"
---providers.kubernetescrd.ingressclass=traefik-internal
-```
-
-Value of `kubernetes.io/ingress.class` annotation that identifies resource objects to be processed.
-
-If the parameter is non-empty, only resources containing an annotation with the same value are processed.
-Otherwise, resources missing the annotation, having an empty value, or the value `traefik` are processed.
 
 ### `throttleDuration`
 
 _Optional, Default: 0 (no throttling)_
 
 ```toml tab="File (TOML)"
-[providers.kubernetesCRD]
+[providers.kubernetesGateway]
   throttleDuration = "10s"
   # ...
 ```
 
 ```yaml tab="File (YAML)"
 providers:
-  kubernetesCRD:
+  kubernetesGateway:
     throttleDuration: "10s"
     # ...
 ```
 
 ```bash tab="CLI"
---providers.kubernetescrd.throttleDuration=10s
+--providers.kubernetesgateway.throttleDuration=10s
 ```
