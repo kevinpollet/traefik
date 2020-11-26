@@ -23,7 +23,6 @@ The Kubernetes Gateway API, The Experimental Way.
     --8<-- "content/reference/dynamic-configuration/kubernetes-gateway-rbac.yml"
     ```
 
-
 ## Routing Configuration
 
 ### Custom Resource Definition (CRD)
@@ -106,12 +105,12 @@ Kubernetes cluster before creating `Gateway` objects.
 | [6]  | `certificateRef`   | The reference to Kubernetes object that contains a TLS certificate and private key.                                         |
 | [7]  | `routes`           | A schema for associating routes with the Listener using selectors.                                                          |
 | [8]  | `kind`             | The kind of the referent.                                                                                                   |
-| [9]  | `selector`         | Selector: Routes in namespaces selected by the selector may be used by this Gateway routes to associate with the Gateway.   |
+| [9]  | `selector`         | Routes in namespaces selected by the selector may be used by this Gateway routes to associate with the Gateway.   |
 | [10] | `matchLabels`      | A set of route labels used for selecting routes to associate with the Gateway.                                              |
 
 ### Kind: `HTTPRoute`
 
-`HTTPRoute`  define HTTP rules for mapping requests from a `Gateway` to Kubernetes Services. 
+`HTTPRoute` defines HTTP rules for mapping requests from a `Gateway` to Kubernetes Services. 
 
 Register the `HTTPRoute` [definition](../../reference/dynamic-configuration/kubernetes-gateway.md#definitions) in the
 Kubernetes cluster before creating `HTTPRoute` objects.

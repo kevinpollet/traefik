@@ -188,7 +188,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 	gatewayClasses, err := client.GetGatewayClasses()
 	if err != nil {
-		logger.Errorf("Cannot found GatewayClasses : %v", err)
+		logger.Errorf("Cannot find GatewayClasses: %v", err)
 		return conf
 	}
 
@@ -212,14 +212,14 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 	// TODO check if we can only use the default filtering mechanism
 	gateways, err := client.GetGateways()
 	if err != nil {
-		logger.Errorf("Cannot found Gateways : %v", err)
+		logger.Errorf("Cannot find Gateways: %v", err)
 	}
 
 	for _, gateway := range gateways {
 		ctxLog := log.With(ctx, log.Str("Gateway", gateway.Namespace+"/"+gateway.Name))
 		logger := log.FromContext(ctxLog)
 
-		// As Status.Addresses is not implemented yet, initialize an empty array to follow the API expectations
+		// As Status.Addresses are not implemented yet, we initialize an empty array to follow the API expectations.
 		gatewayStatus := v1alpha1.GatewayStatus{
 			Addresses: []v1alpha1.GatewayAddress{},
 		}
@@ -258,7 +258,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 			ep, err := p.entryPointName(listener.Port, listener.Protocol)
 			if err != nil {
-				msg := fmt.Sprintf("Cannot found entryPoint for Gateway : %v", err)
+				msg := fmt.Sprintf("Cannot find entryPoint for Gateway: %v", err)
 				// update "Detached" status with "PortUnavailable" reason
 				listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
 					Type:               string(v1alpha1.ListenerConditionDetached),

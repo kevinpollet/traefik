@@ -1,6 +1,6 @@
 # Kubernetes Configuration Reference
 
-Dynamic configuration with Kubernetes Gateway provider
+Dynamic configuration with Kubernetes Gateway provider.
 {: .subtitle }
 
 ## Definitions

@@ -11,9 +11,9 @@ specifications from the Kubernetes SIGs.
 
 This provider is proposed as an experimental feature.
 
-!!!warning "Enabling The Experimental Kubernetes Gateway Provider"
+!!! warning "Enabling The Experimental Kubernetes Gateway Provider"
     
-    As long as this provider is in experimental stage, it needs to be activated in the experimental static configuration. 
+    As this provider is in experimental stage, it needs to be activated in the experimental section of the static configuration. 
     
     ```toml tab="File (TOML)"
     [experimental]
@@ -40,9 +40,9 @@ This provider is proposed as an experimental feature.
 
 !!! tip "All Steps for a Successful Deployment"
   
-    * Add/update the Kubernetes Gateway API [definitions](../reference/dynamic-configuration/kubernetes-gateway.md#definitions)
-    * Add/update the [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) for the Traefik custom resources
-    * Add all needed Kubernetes Gateway API [resources](../reference/dynamic-configuration/kubernetes-gateway.md#resources)
+    * Add/update the Kubernetes Gateway API [definitions](../reference/dynamic-configuration/kubernetes-gateway.md#definitions).
+    * Add/update the [RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) for the Traefik custom resources.
+    * Add all needed Kubernetes Gateway API [resources](../reference/dynamic-configuration/kubernetes-gateway.md#resources).
  
 ??? example "Kubernetes Gateway Provider Basic Example"
 
@@ -210,7 +210,7 @@ Traefik uses Kubernetes
 to retrieve its routing configuration.
 
 All concepts can be found in the official API concepts [documentation](https://kubernetes-sigs.github.io/service-apis/api-overview/).
-The implemented resources by Traefik :
+Traefik implements the following resources:
 
 * `GatewayClass` defines a set of Gateways that share a common configuration and behaviour.
 * `Gateway` describes how traffic can be translated to Services within the cluster.
@@ -223,18 +223,12 @@ The implemented resources by Traefik :
 _Optional, Default=empty_
 
 ```toml tab="File (TOML)"
-[experimental]
-  kubernetesGateway = true
-
 [providers.kubernetesGateway]
   endpoint = "http://localhost:8080"
   # ...
 ```
 
 ```yaml tab="File (YAML)"
-experimental:
-  kubernetesGateway: true
-
 providers:
   kubernetesGateway:
     endpoint: "http://localhost:8080"
@@ -242,7 +236,7 @@ providers:
 ```
 
 ```bash tab="CLI"
---experimental.kubernetesgateway=true --providers.kubernetesgateway.endpoint=http://localhost:8080
+--providers.kubernetesgateway.endpoint=http://localhost:8080
 ```
 
 The Kubernetes server endpoint as URL.
@@ -250,7 +244,7 @@ The Kubernetes server endpoint as URL.
 When deployed into Kubernetes, Traefik will read the environment variables `KUBERNETES_SERVICE_HOST` and `KUBERNETES_SERVICE_PORT` or `KUBECONFIG` to construct the endpoint.
 
 The access token will be looked up in `/var/run/secrets/kubernetes.io/serviceaccount/token` and the SSL CA certificate in `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`.
-Both are provided mounted automatically when deployed inside Kubernetes.
+Both are mounted automatically when deployed inside Kubernetes.
 
 The endpoint may be specified to override the environment variable values inside a cluster.
 
