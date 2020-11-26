@@ -182,9 +182,9 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 		TLS: &dynamic.TLSConfiguration{},
 	}
 
-	logger := log.FromContext(log.With(ctx))
+	logger := log.FromContext(ctx)
 
-	allowedGateway := map[string]struct{}{}
+	gatewayClassNames := map[string]struct{}{}
 
 	gatewayClasses, err := client.GetGatewayClasses()
 	if err != nil {
@@ -194,14 +194,12 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 	for _, gatewayClass := range gatewayClasses {
 		if gatewayClass.Spec.Controller == "traefik.io/gateway-controller" {
-			allowedGateway[gatewayClass.Name] = struct{}{}
+			gatewayClassNames[gatewayClass.Name] = struct{}{}
 
 			err := client.UpdateGatewayClassStatus(gatewayClass, metav1.Condition{
-				Type:               "InvalidParameters",
-				Status:             metav1.ConditionFalse,
+				Type:               string(v1alpha1.GatewayClassConditionStatusAdmitted),
+				Status:             metav1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
-				Reason:             "Handled",
-				Message:            "Handled by Traefik controller",
 			})
 			if err != nil {
 				logger.Errorf("Failed to update InvalidParameters condition: %v", err)
@@ -224,20 +222,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 			Addresses: []v1alpha1.GatewayAddress{},
 		}
 
-		if _, ok := allowedGateway[gateway.Spec.GatewayClassName]; !ok {
-			gatewayStatus.Conditions = append(gatewayStatus.Conditions, metav1.Condition{
-				Type:               string(v1alpha1.GatewayConditionScheduled),
-				Status:             metav1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-				Reason:             string(v1alpha1.GatewayReasonNoSuchGatewayClass),
-				Message:            "Cannot found matching GatewayClass",
-			})
-
-			err := client.UpdateGatewayStatus(gateway, gatewayStatus)
-			if err != nil {
-				logger.Debugf("An error occurred while updating gateway status: %v", err)
-			}
-
+		if _, ok := gatewayClassNames[gateway.Spec.GatewayClassName]; !ok {
 			continue
 		}
 
@@ -254,6 +239,23 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 			listenerStatuses[i] = v1alpha1.ListenerStatus{
 				Port:       listener.Port,
 				Conditions: []metav1.Condition{},
+			}
+
+			// Supported Protocol
+			if listener.Protocol != v1alpha1.HTTPProtocolType && listener.Protocol != v1alpha1.HTTPSProtocolType {
+				msg := fmt.Sprintf("Unsupported listener protocol %q", listener.Protocol)
+				// update "Detached" status true with "UnsupportedProtocol" reason
+				listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+					Type:               string(v1alpha1.ListenerConditionDetached),
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             string(v1alpha1.ListenerReasonUnsupportedProtocol),
+					Message:            msg,
+				})
+
+				logger.Errorf(msg)
+				listenerInError = true
+				continue
 			}
 
 			ep, err := p.entryPointName(listener.Port, listener.Protocol)
@@ -273,7 +275,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 				continue
 			}
 
-			if listener.Protocol == v1alpha1.HTTPSProtocolType || listener.Protocol == v1alpha1.TLSProtocolType {
+			if listener.Protocol == v1alpha1.HTTPSProtocolType {
 				if listener.TLS == nil {
 					msg := fmt.Sprintf("No TLS configuration for Gateway Listener port %d and protocol %q", listener.Port, listener.Protocol)
 					// update "Detached" status with "UnsupportedProtocol" reason
@@ -327,23 +329,6 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 					tlsConfigs[configKey] = tlsConf
 				}
-			}
-
-			// Supported Protocol
-			if listener.Protocol != v1alpha1.HTTPProtocolType && listener.Protocol != v1alpha1.HTTPSProtocolType {
-				msg := fmt.Sprintf("Unsupported listener protocol %q", listener.Protocol)
-				// update "Detached" status true with "UnsupportedProtocol" reason
-				listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
-					Type:               string(v1alpha1.ListenerConditionDetached),
-					Status:             metav1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
-					Reason:             string(v1alpha1.ListenerReasonUnsupportedProtocol),
-					Message:            msg,
-				})
-
-				logger.Errorf(msg)
-				listenerInError = true
-				continue
 			}
 
 			// Supported Route types
