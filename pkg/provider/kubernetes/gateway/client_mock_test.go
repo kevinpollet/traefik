@@ -121,8 +121,8 @@ func (c clientMock) GetGatewayClasses() ([]*v1alpha1.GatewayClass, error) {
 	return c.gatewayClasses, nil
 }
 
-func (c clientMock) GetGateways() ([]*v1alpha1.Gateway, error) {
-	return c.gateways, nil
+func (c clientMock) GetGateways() []*v1alpha1.Gateway {
+	return c.gateways
 }
 
 func (c clientMock) GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, error) {

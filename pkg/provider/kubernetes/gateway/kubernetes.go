@@ -208,12 +208,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 	}
 
 	// TODO check if we can only use the default filtering mechanism
-	gateways, err := client.GetGateways()
-	if err != nil {
-		logger.Errorf("Cannot find Gateways: %v", err)
-	}
-
-	for _, gateway := range gateways {
+	for _, gateway := range client.GetGateways() {
 		ctxLog := log.With(ctx, log.Str("Gateway", gateway.Namespace+"/"+gateway.Name))
 		logger := log.FromContext(ctxLog)
 
@@ -375,8 +370,22 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 				hostRule := hostRule(httpRoute.Spec)
 
 				for _, routeRule := range httpRoute.Spec.Rules {
+					rule, err := extractRule(routeRule, hostRule)
+					if err != nil {
+						msg := fmt.Sprintf("Skipping HTTPRoute %s: cannot generate rule: %v", httpRoute.Name, err)
+						// update "ResolvedRefs" status true with "DroppedRoutes" reason
+						listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
+							Type:               string(v1alpha1.ListenerConditionResolvedRefs),
+							Status:             metav1.ConditionFalse,
+							LastTransitionTime: metav1.Now(),
+							Reason:             string(v1alpha1.ListenerReasonDegradedRoutes),
+							Message:            msg,
+						})
+						logger.Errorf(msg)
+						continue
+					}
 					router := dynamic.Router{
-						Rule:        extractRule(routeRule, hostRule),
+						Rule:        rule,
 						EntryPoints: []string{ep},
 					}
 
@@ -520,48 +529,55 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 }
 
 func hostRule(httpRouteSpec v1alpha1.HTTPRouteSpec) string {
-	if len(httpRouteSpec.Hostnames) > 0 {
-		hostRule := ""
-		for i, hostname := range httpRouteSpec.Hostnames {
-			if i > 0 && len(hostname) > 0 {
-				hostRule += "`, `"
-			}
-			hostRule += string(hostname)
+	hostRule := ""
+	for i, hostname := range httpRouteSpec.Hostnames {
+		if i > 0 && len(hostname) > 0 {
+			hostRule += "`, `"
 		}
+		hostRule += string(hostname)
+	}
 
-		if hostRule != "" {
-			return "Host(`" + hostRule + "`)"
-		}
+	if hostRule != "" {
+		return "Host(`" + hostRule + "`)"
 	}
 
 	return ""
 }
 
-func extractRule(routeRule v1alpha1.HTTPRouteRule, hostRule string) string {
+func extractRule(routeRule v1alpha1.HTTPRouteRule, hostRule string) (string, error) {
 	var rule string
 	var matchesRules []string
 
 	for _, match := range routeRule.Matches {
 		var matchRules []string
 		// TODO handle other path types
-		if match.Path.Type == v1alpha1.PathMatchExact {
-			matchRules = append(matchRules, "Path(`"+match.Path.Value+"`)")
-		}
-
-		if match.Path.Type == v1alpha1.PathMatchPrefix {
-			matchRules = append(matchRules, "PathPrefix(`"+match.Path.Value+"`)")
+		if len(match.Path.Type) > 0 {
+			switch match.Path.Type {
+			case v1alpha1.PathMatchExact:
+				matchRules = append(matchRules, "Path(`"+match.Path.Value+"`)")
+			case v1alpha1.PathMatchPrefix:
+				matchRules = append(matchRules, "PathPrefix(`"+match.Path.Value+"`)")
+			default:
+				return "", fmt.Errorf("unsupported path match %s", match.Path.Type)
+			}
 		}
 
 		// TODO handle other headers types
-		if match.Headers != nil && match.Headers.Type == v1alpha1.HeaderMatchExact {
-			var headerRules []string
+		if match.Headers != nil {
+			switch match.Headers.Type {
+			case v1alpha1.HeaderMatchExact:
+				var headerRules []string
 
-			for headerName, headerValue := range match.Headers.Values {
-				headerRules = append(headerRules, "Headers(`"+headerName+"`,`"+headerValue+"`)")
+				for headerName, headerValue := range match.Headers.Values {
+					headerRules = append(headerRules, "Headers(`"+headerName+"`,`"+headerValue+"`)")
+				}
+				// to have a consistent order
+				sort.Strings(headerRules)
+				matchRules = append(matchRules, headerRules...)
+			default:
+				return "", fmt.Errorf("unsupported header match type %s", match.Headers.Type)
 			}
-			// to have a consistent order
-			sort.Strings(headerRules)
-			matchRules = append(matchRules, headerRules...)
+
 		}
 
 		matchesRules = append(matchesRules, strings.Join(matchRules, " && "))
@@ -576,20 +592,20 @@ func extractRule(routeRule v1alpha1.HTTPRouteRule, hostRule string) string {
 
 	if hostRule != "" {
 		if len(matchesRules) == 0 {
-			return hostRule
+			return hostRule, nil
 		}
 		rule += hostRule + " && "
 	}
 
 	if len(matchesRules) == 1 {
-		return rule + matchesRules[0]
+		return rule + matchesRules[0], nil
 	}
 
 	if len(rule) == 0 {
-		return strings.Join(matchesRules, " || ")
+		return strings.Join(matchesRules, " || "), nil
 	}
 
-	return rule + "(" + strings.Join(matchesRules, " || ") + ")"
+	return rule + "(" + strings.Join(matchesRules, " || ") + ")", nil
 }
 
 func (p *Provider) entryPointName(port v1alpha1.PortNumber, protocol v1alpha1.ProtocolType) (string, error) {
@@ -750,7 +766,7 @@ func loadServices(client Client, namespace string, targets []v1alpha1.HTTPRouteF
 			var match bool
 
 			for _, p := range service.Spec.Ports {
-				if forwardTo.Port == 0 || p.TargetPort.IntVal == int32(forwardTo.Port) {
+				if forwardTo.Port == 0 || p.Port == int32(forwardTo.Port) {
 					portName = p.Name
 					portSpec = p
 					match = true

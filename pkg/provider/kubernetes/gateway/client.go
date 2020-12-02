@@ -54,7 +54,7 @@ type Client interface {
 	GetGatewayClasses() ([]*v1alpha1.GatewayClass, error)
 	UpdateGatewayStatus(gateway *v1alpha1.Gateway, gatewayStatus v1alpha1.GatewayStatus) error
 	UpdateGatewayClassStatus(gatewayClass *v1alpha1.GatewayClass, condition metav1.Condition) error
-	GetGateways() ([]*v1alpha1.Gateway, error)
+	GetGateways() []*v1alpha1.Gateway
 	GetHTTPRoutes(namespace string, selector labels.Selector) ([]*v1alpha1.HTTPRoute, error)
 
 	GetService(namespace, name string) (*corev1.Service, bool, error)
@@ -69,6 +69,7 @@ type clientWrapper struct {
 	factoryGatewayClass externalversions.SharedInformerFactory
 	factoriesGateway    map[string]externalversions.SharedInformerFactory
 	factoriesKube       map[string]informers.SharedInformerFactory
+	factoriesSecret     map[string]informers.SharedInformerFactory
 
 	isNamespaceAll    bool
 	watchedNamespaces []string
@@ -96,6 +97,7 @@ func newClientImpl(csKube *kubernetes.Clientset, csGateway *versioned.Clientset)
 		csKube:           csKube,
 		factoriesGateway: make(map[string]externalversions.SharedInformerFactory),
 		factoriesKube:    make(map[string]informers.SharedInformerFactory),
+		factoriesSecret:  make(map[string]informers.SharedInformerFactory),
 	}
 }
 
@@ -156,7 +158,12 @@ func (c *clientWrapper) WatchAll(namespaces []string, stopCh <-chan struct{}) (<
 		namespaces = []string{metav1.NamespaceAll}
 		c.isNamespaceAll = true
 	}
+
 	c.watchedNamespaces = namespaces
+
+	notOwnedByHelm := func(opts *metav1.ListOptions) {
+		opts.LabelSelector = "owner!=helm"
+	}
 
 	labelSelectorOptions := func(options *metav1.ListOptions) {
 		options.LabelSelector = c.labelSelector
@@ -173,11 +180,13 @@ func (c *clientWrapper) WatchAll(namespaces []string, stopCh <-chan struct{}) (<
 		factoryKube := informers.NewSharedInformerFactoryWithOptions(c.csKube, resyncPeriod, informers.WithNamespace(ns))
 		factoryKube.Core().V1().Services().Informer().AddEventHandler(eventHandler)
 		factoryKube.Core().V1().Endpoints().Informer().AddEventHandler(eventHandler)
-		// TODO: filter the helm secrets https://github.com/traefik/traefik/pull/7562
-		factoryKube.Core().V1().Secrets().Informer().AddEventHandler(eventHandler)
+
+		factorySecret := informers.NewSharedInformerFactoryWithOptions(c.csKube, resyncPeriod, informers.WithNamespace(ns), informers.WithTweakListOptions(notOwnedByHelm))
+		factorySecret.Core().V1().Secrets().Informer().AddEventHandler(eventHandler)
 
 		c.factoriesGateway[ns] = factoryGateway
 		c.factoriesKube[ns] = factoryKube
+		c.factoriesSecret[ns] = factorySecret
 	}
 
 	c.factoryGatewayClass.Start(stopCh)
@@ -185,9 +194,14 @@ func (c *clientWrapper) WatchAll(namespaces []string, stopCh <-chan struct{}) (<
 	for _, ns := range namespaces {
 		c.factoriesGateway[ns].Start(stopCh)
 		c.factoriesKube[ns].Start(stopCh)
+		c.factoriesSecret[ns].Start(stopCh)
 	}
 
-	c.factoryGatewayClass.WaitForCacheSync(stopCh)
+	for t, ok := range c.factoryGatewayClass.WaitForCacheSync(stopCh) {
+		if !ok {
+			return nil, fmt.Errorf("timed out waiting for controller caches to sync %s", t.String())
+		}
+	}
 
 	for _, ns := range namespaces {
 		for t, ok := range c.factoriesGateway[ns].WaitForCacheSync(stopCh) {
@@ -197,6 +211,12 @@ func (c *clientWrapper) WatchAll(namespaces []string, stopCh <-chan struct{}) (<
 		}
 
 		for t, ok := range c.factoriesKube[ns].WaitForCacheSync(stopCh) {
+			if !ok {
+				return nil, fmt.Errorf("timed out waiting for controller caches to sync %s in namespace %q", t.String(), ns)
+			}
+		}
+
+		for t, ok := range c.factoriesSecret[ns].WaitForCacheSync(stopCh) {
 			if !ok {
 				return nil, fmt.Errorf("timed out waiting for controller caches to sync %s in namespace %q", t.String(), ns)
 			}
@@ -222,19 +242,20 @@ func (c *clientWrapper) GetHTTPRoutes(namespace string, selector labels.Selector
 	return httpRoutes, nil
 }
 
-func (c *clientWrapper) GetGateways() ([]*v1alpha1.Gateway, error) {
+func (c *clientWrapper) GetGateways() []*v1alpha1.Gateway {
 	var result []*v1alpha1.Gateway
 
 	for ns, factory := range c.factoriesGateway {
 		// TODO: add real label selector
 		gateways, err := factory.Networking().V1alpha1().Gateways().Lister().List(labels.Everything())
 		if err != nil {
-			log.Errorf("Failed to list Gateways in namespace %s: %v", ns, err)
+			log.WithoutContext().Errorf("Failed to list Gateways in namespace %s: %v", ns, err)
+			continue
 		}
 		result = append(result, gateways...)
 	}
 
-	return result, nil
+	return result
 }
 
 func (c *clientWrapper) GetGatewayClasses() ([]*v1alpha1.GatewayClass, error) {
@@ -372,7 +393,7 @@ func (c *clientWrapper) GetSecret(namespace, name string) (*corev1.Secret, bool,
 		return nil, false, fmt.Errorf("failed to get secret %s/%s: namespace is not within watched namespaces", namespace, name)
 	}
 
-	secret, err := c.factoriesKube[c.lookupNamespace(namespace)].Core().V1().Secrets().Lister().Secrets(namespace).Get(name)
+	secret, err := c.factoriesSecret[c.lookupNamespace(namespace)].Core().V1().Secrets().Lister().Secrets(namespace).Get(name)
 	exist, err := translateNotFoundError(err)
 
 	return secret, exist, err

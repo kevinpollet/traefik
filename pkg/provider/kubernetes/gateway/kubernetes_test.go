@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/traefik/traefik/v2/pkg/config/dynamic"
 	"github.com/traefik/traefik/v2/pkg/provider"
@@ -706,10 +708,11 @@ func TestHostRule(t *testing.T) {
 
 func TestExtractRule(t *testing.T) {
 	testCases := []struct {
-		desc         string
-		routeRule    v1alpha1.HTTPRouteRule
-		hostRule     string
-		expectedRule string
+		desc          string
+		routeRule     v1alpha1.HTTPRouteRule
+		hostRule      string
+		expectedRule  string
+		expectedError bool
 	}{
 		{
 			desc:         "Empty rule and matches",
@@ -733,6 +736,26 @@ func TestExtractRule(t *testing.T) {
 				},
 			},
 			expectedRule: "Path(`/foo/`)",
+		},
+		{
+			desc: "One Path in matches and another empty",
+			routeRule: v1alpha1.HTTPRouteRule{
+				Matches: []v1alpha1.HTTPRouteMatch{
+					{
+						Path: v1alpha1.HTTPPathMatch{
+							Type:  v1alpha1.PathMatchExact,
+							Value: "/foo/",
+						},
+					},
+					{
+						Path: v1alpha1.HTTPPathMatch{
+							Type:  "unknown",
+							Value: "/foo/",
+						},
+					},
+				},
+			},
+			expectedError: true,
 		},
 		{
 			desc: "Path OR Header rules",
@@ -827,7 +850,14 @@ func TestExtractRule(t *testing.T) {
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, test.expectedRule, extractRule(test.routeRule, test.hostRule))
+			rule, err := extractRule(test.routeRule, test.hostRule)
+			if test.expectedError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedRule, rule)
 		})
 	}
 }
