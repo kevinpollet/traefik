@@ -175,7 +175,7 @@ plugin's GOPATH.
 plugin's module name.
 
 `--experimental.kubernetesgateway`:  
-Allow the k8s gateway api provider usage. (Default: ```false```)
+Allow the Kubernetes gateway api provider usage. (Default: ```false```)
 
 `--experimental.plugins.<name>.modulename`:  
 plugin's module name.

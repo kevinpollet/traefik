@@ -8,15 +8,15 @@ The Kubernetes Gateway API, The Experimental Way.
 ??? example "Configuring Kubernetes Gateway provider and Deploying/Exposing Services"
 
     ```yaml tab="Gateway API"
-    --8<-- "content/routing/providers/kubernetes-gateway-sample.yml"
+    --8<-- "content/reference/dynamic-configuration/kubernetes-gateway-simple-https.yml"
     ```
 
     ```yaml tab="Whoami Service"
-    --8<-- "content/routing/providers/kubernetes-sample-svc-whoami.yml"
+    --8<-- "content/reference/dynamic-configuration/kubernetes-whoami-svc.yml"
     ```
     
     ```yaml tab="Traefik Service"
-    --8<-- "content/routing/providers/kubernetes-sample-svc-traefik.yml"
+    --8<-- "content/reference/dynamic-configuration/kubernetes-gateway-traefik-lb-svc.yml"
     ```
 
     ```yaml tab="RBAC"

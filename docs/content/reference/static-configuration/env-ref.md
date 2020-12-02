@@ -175,7 +175,7 @@ plugin's GOPATH.
 plugin's module name.
 
 `TRAEFIK_EXPERIMENTAL_KUBERNETESGATEWAY`:  
-Allow the k8s gateway api provider usage. (Default: ```false```)
+Allow the Kubernetes gateway api provider usage. (Default: ```false```)
 
 `TRAEFIK_EXPERIMENTAL_PLUGINS_<NAME>_MODULENAME`:  
 plugin's module name.

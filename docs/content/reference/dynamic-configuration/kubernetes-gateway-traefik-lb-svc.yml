@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -8,35 +9,32 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: traefik
-  labels:
-    app: traefik
 
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: traefik
+      app: traefik-lb
   template:
     metadata:
       labels:
-        app: traefik
+        app: traefik-lb
     spec:
       serviceAccountName: traefik-controller
       containers:
         - name: traefik
-          image: traefik:v2.4
+          image: traefik/traefik:latest
           imagePullPolicy: IfNotPresent
           args:
-            - --log.level=DEBUG
-            - --api.insecure
             - --entrypoints.web.address=:80
+            - --entrypoints.websecure.address=:443
             - --experimental.kubernetesgateway
             - --providers.kubernetesgateway
           ports:
             - name: web
               containerPort: 80
-            - name: api
-              containerPort: 8080
+            - name: websecure
+              containerPort: 443
 
 ---
 apiVersion: v1
@@ -45,14 +43,14 @@ metadata:
   name: traefik
 spec:
   selector:
-    app: traefik
+    app: traefik-lb
   ports:
     - protocol: TCP
-      port: 8080
-      targetPort: 8080
-      name: api
-    - protocol: TCP
       port: 80
-      targetPort: 80
+      targetPort: web
       name: web
+    - protocol: TCP
+      port: 443
+      targetPort: websecure
+      name: websecure
   type: LoadBalancer

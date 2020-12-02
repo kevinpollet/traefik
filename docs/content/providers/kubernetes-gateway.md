@@ -47,148 +47,15 @@ This provider is proposed as an experimental feature.
 ??? example "Kubernetes Gateway Provider Basic Example"
 
     ```yaml tab="Gateway API"
-    ---
-    kind: GatewayClass
-    apiVersion: networking.x-k8s.io/v1alpha1
-    metadata:
-      name: my-gateway-class
-    spec:
-      controller: traefik.io/gateway-controller
-    
-    ---
-    kind: Gateway
-    apiVersion: networking.x-k8s.io/v1alpha1
-    metadata:
-      name: my-gateway
-      namespace: default
-    spec:
-      gatewayClassName: my-gateway-class
-      listeners:
-        - protocol: HTTP
-          port: 80
-          routes:
-            kind: HTTPRoute
-            routeNamespaces:
-              from: Same
-            routeSelector:
-              matchLabels:
-                app: foo
-    
-    ---
-    kind: HTTPRoute
-    apiVersion: networking.x-k8s.io/v1alpha1
-    metadata:
-      name: http-app-1
-      namespace: default
-      labels:
-        app: foo
-    spec:
-      hostnames:
-        - "whoami"
-      rules:
-        - matches:
-            - path:
-                type: Exact
-                value: /bar
-          forwardTo:
-            - serviceName: whoami
-              weight: 1
+    --8<-- "content/reference/dynamic-configuration/kubernetes-gateway-simple-https.yml"
     ```
 
     ```yaml tab="Whoami Service"
-    ---
-    kind: Deployment
-    apiVersion: apps/v1
-    metadata:
-      name: whoami
-      namespace: default
-      labels:
-        app: traefik
-        name: whoami
-    
-    spec:
-      replicas: 2
-      selector:
-        matchLabels:
-          app: traefik
-          task: whoami
-      template:
-        metadata:
-          labels:
-            app: traefik
-            task: whoami
-        spec:
-          containers:
-            - name: whoami
-              image: traefik/whoami
-    
-    ---
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: whoami
-      namespace: default
-    
-    spec:
-      ports:
-        - protocol: TCP
-          port: 80
-      selector:
-        app: traefik
-        task: whoami
+    --8<-- "content/reference/dynamic-configuration/kubernetes-whoami-svc.yml"
     ```
     
     ```yaml tab="Traefik Service"
-    apiVersion: v1
-    kind: ServiceAccount
-    metadata:
-      name: traefik-controller
-    
-    ---
-    kind: Deployment
-    apiVersion: apps/v1
-    metadata:
-      name: traefik
-      labels:
-        app: traefik
-    
-    spec:
-      replicas: 1
-      selector:
-        matchLabels:
-          app: traefik
-      template:
-        metadata:
-          labels:
-            app: traefik
-        spec:
-          serviceAccountName: traefik-controller
-          containers:
-            - name: traefik
-              image: <traefik experimental image>
-              args:
-                - --log.level=DEBUG
-                - --entrypoints.web.address=:80
-                - --experimental.kubernetesgateway
-                - --providers.kubernetesgateway
-              ports:
-                - name: web
-                  containerPort: 80
-    
-    ---
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: traefik
-    spec:
-      selector:
-        app: traefik
-      ports:
-        - protocol: TCP
-          port: 80
-          targetPort: 80
-          name: web
-      type: LoadBalancer
+    --8<-- "content/reference/dynamic-configuration/kubernetes-gateway-traefik-lb-svc.yml"
     ```
     
     ```yaml tab="Gateway API CRDs"
