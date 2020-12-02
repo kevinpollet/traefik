@@ -792,8 +792,6 @@ func TestDo_staticConfiguration(t *testing.T) {
 		},
 	}
 
-	// FIXME Test the other providers once they are migrated
-
 	config.Metrics = &types.Metrics{
 		Prometheus: &types.Prometheus{
 			Buckets:              []float64{0.1, 0.3, 1.2, 5},
