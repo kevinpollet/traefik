@@ -292,7 +292,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 					// update "ResolvedRefs" status true with "InvalidCertificateRef" reason
 					listenerStatuses[i].Conditions = append(listenerStatuses[i].Conditions, metav1.Condition{
 						Type:               string(v1alpha1.ListenerConditionResolvedRefs),
-						Status:             metav1.ConditionTrue,
+						Status:             metav1.ConditionFalse,
 						LastTransitionTime: metav1.Now(),
 						Reason:             string(v1alpha1.ListenerReasonInvalidCertificateRef),
 						Message:            msg,
@@ -452,8 +452,6 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 					Type:               string(v1alpha1.ListenerConditionReady),
 					Status:             metav1.ConditionTrue,
 					LastTransitionTime: metav1.Now(),
-					Reason:             "ListenerReady",
-					Message:            "No error found",
 				})
 			} else {
 				listenerInError = true
@@ -485,8 +483,6 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 			Type:               string(v1alpha1.GatewayConditionScheduled),
 			Status:             metav1.ConditionTrue,
 			LastTransitionTime: metav1.Now(),
-			Reason:             "ResourcesAvailable",
-			Message:            "Found matching HTTPRoutes",
 		})
 
 		// update "Ready" status with "ListenersValid" reason
@@ -494,8 +490,6 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 			Type:               string(v1alpha1.GatewayConditionReady),
 			Status:             metav1.ConditionTrue,
 			LastTransitionTime: metav1.Now(),
-			Reason:             "ListenersValid",
-			Message:            "All listeners are valid",
 		})
 
 		err := client.UpdateGatewayStatus(gateway, gatewayStatus)
@@ -549,6 +543,10 @@ func extractRule(routeRule v1alpha1.HTTPRouteRule, hostRule string) (string, err
 	var matchesRules []string
 
 	for _, match := range routeRule.Matches {
+		if len(match.Path.Type) == 0 && match.Headers == nil {
+			continue
+		}
+
 		var matchRules []string
 		// TODO handle other path types
 		if len(match.Path.Type) > 0 {
@@ -577,7 +575,6 @@ func extractRule(routeRule v1alpha1.HTTPRouteRule, hostRule string) (string, err
 			default:
 				return "", fmt.Errorf("unsupported header match type %s", match.Headers.Type)
 			}
-
 		}
 
 		matchesRules = append(matchesRules, strings.Join(matchRules, " && "))
@@ -614,10 +611,11 @@ func (p *Provider) entryPointName(port v1alpha1.PortNumber, protocol v1alpha1.Pr
 	for name, entryPoint := range p.EntryPoints {
 		if strings.HasSuffix(entryPoint.Address, ":"+portStr) {
 			// if the protocol is HTTP the entryPoint must have no TLS conf
-			if protocol != "HTTP" || !entryPoint.HasHTTPTLSConf {
-				entryPointName = name
-				break
+			if protocol == v1alpha1.HTTPProtocolType && entryPoint.HasHTTPTLSConf {
+				continue
 			}
+			entryPointName = name
+			break
 		}
 	}
 

@@ -6,10 +6,12 @@ metadata:
 
 spec:
   ports:
+    - name: web2
+      port: 8000
+      targetPort: web2
     - name: web
       port: 80
-      # Explicitly set as it is unit test without defaulting to port value
-      targetPort: 80
+      targetPort: web
   selector:
     app: containous
     task: whoami
@@ -28,6 +30,8 @@ subsets:
     ports:
       - name: web
         port: 80
+      - name: web2
+        port: 8000
 
 ---
 apiVersion: v1
@@ -40,8 +44,7 @@ spec:
   ports:
     - name: web
       port: 8080
-      # Explicitly set as it is unit test without defaulting to port value
-      targetPort: 8080
+      targetPort: web
   selector:
     app: containous
     task: whoami2
@@ -72,7 +75,7 @@ spec:
   ports:
     - name: websecure
       port: 443
-      targetPort: 8443
+      targetPort: websecure
   selector:
     app: containous
     task: whoami2
@@ -103,7 +106,7 @@ spec:
   ports:
     - name: websecure2
       port: 8443
-      targetPort: 8443
+      targetPort: websecure2
       scheme: https
   selector:
     app: containous
@@ -146,7 +149,6 @@ spec:
   ports:
     - name: http
       protocol: TCP
-      targetPort: 80
       port: 80
 
 ---
@@ -162,7 +164,6 @@ spec:
     - name: https
       protocol: TCP
       port: 443
-      targetPort: 443
 
 
 

@@ -4,9 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/traefik/traefik/v2/pkg/config/dynamic"
 	"github.com/traefik/traefik/v2/pkg/provider"
 	"github.com/traefik/traefik/v2/pkg/tls"
@@ -141,7 +140,7 @@ func TestLoadHTTPRoutes(t *testing.T) {
 			entryPoints: map[string]Entrypoint{"web": {
 				Address: ":80",
 			}},
-			paths: []string{"services_multiple_ports.yml", "with_wrong_targetport.yml"},
+			paths: []string{"services.yml", "with_wrong_service_port.yml"},
 			expected: &dynamic.Configuration{
 				UDP: &dynamic.UDPConfiguration{
 					Routers:  map[string]*dynamic.UDPRouter{},
@@ -503,8 +502,8 @@ func TestLoadHTTPRoutes(t *testing.T) {
 			},
 		},
 		{
-			desc:  "One HTTPRoute with TargetPort with multiple port Service as TargetRef",
-			paths: []string{"services_multiple_ports.yml", "with_targetport.yml"},
+			desc:  "One HTTPRoute with Port that refers to multiple port Service as TargetRef",
+			paths: []string{"services.yml", "simple.yml"},
 			entryPoints: map[string]Entrypoint{"web": {
 				Address: ":80",
 			}},
@@ -531,20 +530,20 @@ func TestLoadHTTPRoutes(t *testing.T) {
 							Weighted: &dynamic.WeightedRoundRobin{
 								Services: []dynamic.WRRService{
 									{
-										Name:   "default-whoami-8000",
+										Name:   "default-whoami-80",
 										Weight: func(i int) *int { return &i }(1),
 									},
 								},
 							},
 						},
-						"default-whoami-8000": {
+						"default-whoami-80": {
 							LoadBalancer: &dynamic.ServersLoadBalancer{
 								Servers: []dynamic.Server{
 									{
-										URL: "http://10.10.0.1:8000",
+										URL: "http://10.10.0.1:80",
 									},
 									{
-										URL: "http://10.10.0.2:8000",
+										URL: "http://10.10.0.2:80",
 									},
 								},
 								PassHostHeader: Bool(true),
@@ -627,6 +626,9 @@ func TestLoadHTTPRoutes(t *testing.T) {
 
 	for _, test := range testCases {
 		test := test
+		if test.desc != "One HTTPRoute with Port that refers to multiple port Service as TargetRef" {
+			continue
+		}
 
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
@@ -738,7 +740,7 @@ func TestExtractRule(t *testing.T) {
 			expectedRule: "Path(`/foo/`)",
 		},
 		{
-			desc: "One Path in matches and another empty",
+			desc: "One Path in matches and another unknown",
 			routeRule: v1alpha1.HTTPRouteRule{
 				Matches: []v1alpha1.HTTPRouteMatch{
 					{
@@ -756,6 +758,21 @@ func TestExtractRule(t *testing.T) {
 				},
 			},
 			expectedError: true,
+		},
+		{
+			desc: "One Path in matches and another empty",
+			routeRule: v1alpha1.HTTPRouteRule{
+				Matches: []v1alpha1.HTTPRouteMatch{
+					{
+						Path: v1alpha1.HTTPPathMatch{
+							Type:  v1alpha1.PathMatchExact,
+							Value: "/foo/",
+						},
+					},
+					{},
+				},
+			},
+			expectedRule: "Path(`/foo/`)",
 		},
 		{
 			desc: "Path OR Header rules",

@@ -246,7 +246,6 @@ func (c *clientWrapper) GetGateways() []*v1alpha1.Gateway {
 	var result []*v1alpha1.Gateway
 
 	for ns, factory := range c.factoriesGateway {
-		// TODO: add real label selector
 		gateways, err := factory.Networking().V1alpha1().Gateways().Lister().List(labels.Everything())
 		if err != nil {
 			log.WithoutContext().Errorf("Failed to list Gateways in namespace %s: %v", ns, err)
@@ -259,13 +258,7 @@ func (c *clientWrapper) GetGateways() []*v1alpha1.Gateway {
 }
 
 func (c *clientWrapper) GetGatewayClasses() ([]*v1alpha1.GatewayClass, error) {
-	// TODO: add real label selector
-	gatewayClasses, err := c.factoryGatewayClass.Networking().V1alpha1().GatewayClasses().Lister().List(labels.Everything())
-	if err != nil {
-		return nil, fmt.Errorf("failed to list GatewayClasses: %w", err)
-	}
-
-	return gatewayClasses, nil
+	return c.factoryGatewayClass.Networking().V1alpha1().GatewayClasses().Lister().List(labels.Everything())
 }
 
 func (c *clientWrapper) UpdateGatewayClassStatus(gatewayClass *v1alpha1.GatewayClass, condition metav1.Condition) error {
