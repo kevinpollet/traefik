@@ -209,7 +209,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 	// TODO check if we can only use the default filtering mechanism
 	for _, gateway := range client.GetGateways() {
-		ctxLog := log.With(ctx, log.Str("Gateway", gateway.Namespace+"/"+gateway.Name))
+		ctxLog := log.With(ctx, log.Str("gateway", gateway.Name), log.Str("namespace", gateway.Namespace))
 		logger := log.FromContext(ctxLog)
 
 		// As Status.Addresses are not implemented yet, we initialize an empty array to follow the API expectations.

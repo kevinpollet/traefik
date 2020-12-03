@@ -63,8 +63,8 @@ type Client interface {
 }
 
 type clientWrapper struct {
-	csGateway *versioned.Clientset
-	csKube    *kubernetes.Clientset
+	csGateway versioned.Interface
+	csKube    kubernetes.Interface
 
 	factoryGatewayClass externalversions.SharedInformerFactory
 	factoriesGateway    map[string]externalversions.SharedInformerFactory
@@ -91,7 +91,7 @@ func createClientFromConfig(c *rest.Config) (*clientWrapper, error) {
 	return newClientImpl(csKube, csGateway), nil
 }
 
-func newClientImpl(csKube *kubernetes.Clientset, csGateway *versioned.Clientset) *clientWrapper {
+func newClientImpl(csKube kubernetes.Interface, csGateway versioned.Interface) *clientWrapper {
 	return &clientWrapper{
 		csGateway:        csGateway,
 		csKube:           csKube,
@@ -263,25 +263,30 @@ func (c *clientWrapper) GetGatewayClasses() ([]*v1alpha1.GatewayClass, error) {
 
 func (c *clientWrapper) UpdateGatewayClassStatus(gatewayClass *v1alpha1.GatewayClass, condition metav1.Condition) error {
 	gc := gatewayClass.DeepCopy()
-	index := -1
 
-	for i, c := range gc.Status.Conditions {
-		// cf https://kubernetes-sigs.github.io/service-apis/gatewayclass/#gatewayclass-status
-		if c.Type == condition.Type && c.Status != condition.Status {
-			index = i
-			continue
+	var newConditions []metav1.Condition
+	for _, cond := range gc.Status.Conditions {
+		// No update for identical condition.
+		if cond.Type == condition.Type && cond.Status == condition.Status {
+			return nil
+		}
+
+		// Keep other condition types.
+		if cond.Type != condition.Type || cond.Status != condition.Status {
+			newConditions = append(newConditions, cond)
 		}
 	}
 
-	if index != -1 {
-		gc.Status.Conditions[index] = condition
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+	// Append the condition to update.
+	newConditions = append(newConditions, condition)
+	gc.Status.Conditions = newConditions
 
-		_, err := c.csGateway.NetworkingV1alpha1().GatewayClasses().UpdateStatus(ctx, gc, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to update GatewayClass %q status: %w", gatewayClass.Name, err)
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := c.csGateway.NetworkingV1alpha1().GatewayClasses().UpdateStatus(ctx, gc, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update GatewayClass %q status: %w", gatewayClass.Name, err)
 	}
 
 	return nil
