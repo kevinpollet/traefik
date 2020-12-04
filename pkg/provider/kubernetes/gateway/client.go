@@ -297,12 +297,11 @@ func (c *clientWrapper) UpdateGatewayStatus(gateway *v1alpha1.Gateway, gatewaySt
 		return fmt.Errorf("cannot update Gateway status %s/%s: namespace is not within watched namespaces", gateway.Namespace, gateway.Name)
 	}
 
-	g := gateway.DeepCopy()
-
-	if statusEquals(g.Status, gatewayStatus) {
-		return fmt.Errorf("cannot update Gateway status %s/%s: conditions are already up to date", gateway.Namespace, gateway.Name)
+	if statusEquals(gateway.Status, gatewayStatus) {
+		return nil
 	}
 
+	g := gateway.DeepCopy()
 	g.Status = gatewayStatus
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

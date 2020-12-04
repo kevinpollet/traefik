@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"sort"
 	"strconv"
@@ -26,20 +27,19 @@ import (
 	"sigs.k8s.io/service-apis/apis/v1alpha1"
 )
 
-const (
-	providerName = "kubernetesgateway"
-)
+const providerName = "kubernetesgateway"
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Endpoint          string          `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
-	Token             string          `description:"Kubernetes bearer token (not needed for in-cluster client)." json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
-	CertAuthFilePath  string          `description:"Kubernetes certificate authority file path (not needed for in-cluster client)." json:"certAuthFilePath,omitempty" toml:"certAuthFilePath,omitempty" yaml:"certAuthFilePath,omitempty"`
-	Namespaces        []string        `description:"Kubernetes namespaces." json:"namespaces,omitempty" toml:"namespaces,omitempty" yaml:"namespaces,omitempty" export:"true"`
-	LabelSelector     string          `description:"Kubernetes label selector to select specific GatewayClasses." json:"labelSelector,omitempty" toml:"labelSelector,omitempty" yaml:"labelSelector,omitempty" export:"true"`
-	ThrottleDuration  ptypes.Duration `description:"Kubernetes refresh throttle duration" json:"throttleDuration,omitempty" toml:"throttleDuration,omitempty" yaml:"throttleDuration,omitempty" export:"true"`
+	Endpoint         string                `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Token            string                `description:"Kubernetes bearer token (not needed for in-cluster client)." json:"token,omitempty" toml:"token,omitempty" yaml:"token,omitempty"`
+	CertAuthFilePath string                `description:"Kubernetes certificate authority file path (not needed for in-cluster client)." json:"certAuthFilePath,omitempty" toml:"certAuthFilePath,omitempty" yaml:"certAuthFilePath,omitempty"`
+	Namespaces       []string              `description:"Kubernetes namespaces." json:"namespaces,omitempty" toml:"namespaces,omitempty" yaml:"namespaces,omitempty" export:"true"`
+	LabelSelector    string                `description:"Kubernetes label selector to select specific GatewayClasses." json:"labelSelector,omitempty" toml:"labelSelector,omitempty" yaml:"labelSelector,omitempty" export:"true"`
+	ThrottleDuration ptypes.Duration       `description:"Kubernetes refresh throttle duration" json:"throttleDuration,omitempty" toml:"throttleDuration,omitempty" yaml:"throttleDuration,omitempty" export:"true"`
+	EntryPoints      map[string]Entrypoint `json:"-" toml:"-" yaml:"-" label:"-" file:"-"`
+
 	lastConfiguration safe.Safe
-	EntryPoints       map[string]Entrypoint `json:"-" toml:"-" yaml:"-" label:"-" file:"-"`
 }
 
 // Entrypoint defines the available entry points.
@@ -204,7 +204,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 				LastTransitionTime: metav1.Now(),
 			})
 			if err != nil {
-				logger.Errorf("Failed to update InvalidParameters condition: %v", err)
+				logger.Errorf("Failed to update %s condition: %v", v1alpha1.GatewayClassConditionStatusAdmitted, err)
 			}
 		}
 	}
@@ -476,7 +476,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 			err := client.UpdateGatewayStatus(gateway, gatewayStatus)
 			if err != nil {
-				logger.Debugf("An error occurred while updating gateway status: %v", err)
+				logger.Errorf("An error occurred while updating gateway status: %v", err)
 			}
 
 			continue
@@ -502,7 +502,7 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 
 		err := client.UpdateGatewayStatus(gateway, gatewayStatus)
 		if err != nil {
-			logger.Debugf("An error occurred while updating gateway status: %v", err)
+			logger.Errorf("An error occurred while updating gateway status: %v", err)
 		}
 
 		if len(routers) > 0 {
@@ -798,6 +798,7 @@ func loadServices(client Client, namespace string, targets []v1alpha1.HTTPRouteF
 			}
 
 			var port int32
+			var portStr string
 			for _, subset := range endpoints.Subsets {
 				for _, p := range subset.Ports {
 					if portName == p.Name {
@@ -812,14 +813,15 @@ func loadServices(client Client, namespace string, targets []v1alpha1.HTTPRouteF
 
 				protocol := getProtocol(portSpec, portName)
 
+				portStr = strconv.FormatInt(int64(port), 10)
 				for _, addr := range subset.Addresses {
 					svc.LoadBalancer.Servers = append(svc.LoadBalancer.Servers, dynamic.Server{
-						URL: fmt.Sprintf("%s://%s:%d", protocol, addr.IP, port),
+						URL: fmt.Sprintf("%s://%s", protocol, net.JoinHostPort(addr.IP, portStr)),
 					})
 				}
 			}
 
-			serviceName := provider.Normalize(makeID(service.Namespace, service.Name) + "-" + strconv.FormatInt(int64(port), 10))
+			serviceName := provider.Normalize(makeID(service.Namespace, service.Name) + "-" + portStr)
 			services[serviceName] = &svc
 
 			weight := int(forwardTo.Weight)
