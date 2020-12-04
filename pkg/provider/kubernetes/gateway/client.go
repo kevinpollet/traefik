@@ -272,7 +272,7 @@ func (c *clientWrapper) UpdateGatewayClassStatus(gatewayClass *v1alpha1.GatewayC
 		}
 
 		// Keep other condition types.
-		if cond.Type != condition.Type || cond.Status != condition.Status {
+		if cond.Type != condition.Type {
 			newConditions = append(newConditions, cond)
 		}
 	}
