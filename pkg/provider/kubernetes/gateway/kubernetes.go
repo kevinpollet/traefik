@@ -454,6 +454,8 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 					Type:               string(v1alpha1.ListenerConditionReady),
 					Status:             metav1.ConditionTrue,
 					LastTransitionTime: metav1.Now(),
+					Reason:             "ListenerReady",
+					Message:            "No error found",
 				})
 			} else {
 				listenerInError = true
@@ -484,6 +486,8 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 		gatewayStatus.Conditions = append(gatewayStatus.Conditions, metav1.Condition{
 			Type:               string(v1alpha1.GatewayConditionScheduled),
 			Status:             metav1.ConditionTrue,
+			Reason:             "ResourcesAvailable",
+			Message:            "Resources available",
 			LastTransitionTime: metav1.Now(),
 		})
 
@@ -491,6 +495,8 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 		gatewayStatus.Conditions = append(gatewayStatus.Conditions, metav1.Condition{
 			Type:               string(v1alpha1.GatewayConditionReady),
 			Status:             metav1.ConditionTrue,
+			Reason:             "ListenersValid",
+			Message:            "Listeners valid",
 			LastTransitionTime: metav1.Now(),
 		})
 
