@@ -193,7 +193,7 @@ Array of namespaces to watch.
 
 ### `labelselector`
 
-_Optional,Default: empty (process all resources)_
+_Optional, Default: empty (process all resources)_
 
 ```toml tab="File (TOML)"
 [providers.kubernetesGateway]
