@@ -63,7 +63,7 @@ creating `GatewayClass` objects.
 
 ### Kind: `Gateway`
 
-`Gateway` A Gateway is 1:1 with the life cycle of the configuration of infrastructure. When a user creates a Gateway, 
+A `Gateway` is 1:1 with the life cycle of the configuration of infrastructure. When a user creates a Gateway, 
 some load balancing infrastructure is provisioned or configured by the GatewayClass controller. 
 More details on the Gateway [official documentation](https://kubernetes-sigs.github.io/service-apis/gateway/).
 
