@@ -28,11 +28,11 @@
 				"traefik"
 			]
 		},
-		"default-http-app-1-1c0cf64bde37d9d0df06@kubernetesgateway": {
+		"default-http-app-1-my-gateway-web-1c0cf64bde37d9d0df06@kubernetesgateway": {
 			"entryPoints": [
 				"web"
 			],
-			"service": "default-http-app-1-1c0cf64bde37d9d0df06-wrr",
+			"service": "default-http-app-1-my-gateway-web-1c0cf64bde37d9d0df06-wrr",
 			"rule": "Host(`foo.com`) \u0026\u0026 Path(`/bar`)",
 			"status": "enabled",
 			"using": [
@@ -78,7 +78,7 @@
 				"dashboard@internal"
 			]
 		},
-		"default-http-app-1-1c0cf64bde37d9d0df06-wrr@kubernetesgateway": {
+		"default-http-app-1-my-gateway-web-1c0cf64bde37d9d0df06-wrr@kubernetesgateway": {
 			"weighted": {
 				"services": [
 					{
@@ -89,7 +89,7 @@
 			},
 			"status": "enabled",
 			"usedBy": [
-				"default-http-app-1-1c0cf64bde37d9d0df06@kubernetesgateway"
+				"default-http-app-1-my-gateway-web-1c0cf64bde37d9d0df06@kubernetesgateway"
 			]
 		},
 		"default-whoami-80@kubernetesgateway": {

@@ -396,7 +396,9 @@ func (p *Provider) loadConfigurationFromGateway(ctx context.Context, client Clie
 						router.TLS = &dynamic.RouterTLSConfig{}
 					}
 
-					routerKey, err := makeRouterKey(router.Rule, makeID(httpRoute.Namespace, httpRoute.Name))
+					// Adding the gateway name and the entryPoint name prevents overlapping of routers build from the same routes.
+					routerName := httpRoute.Name + "-" + gateway.Name + "-" + ep
+					routerKey, err := makeRouterKey(router.Rule, makeID(httpRoute.Namespace, routerName))
 					if err != nil {
 						msg := fmt.Sprintf("Skipping HTTPRoute %s: cannot make router's key with rule %s: %v", httpRoute.Name, router.Rule, err)
 						// update "ResolvedRefs" status true with "DroppedRoutes" reason
