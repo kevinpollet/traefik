@@ -170,6 +170,7 @@ Depending on the Listener Protocol, different modes and Route types are supporte
             kind: TLSRoute                      # [9]
             namespaces:
               from: Same                        # [10]
+              selector: foo   
             selector:                           # [11]
               matchLabels:                      # [12]
                 app: footcp
@@ -186,21 +187,20 @@ Depending on the Listener Protocol, different modes and Route types are supporte
 | [7]  | `certificateRef`   | The reference to Kubernetes object that contains a TLS certificate and private key.                                                                  |
 | [8]  | `routes`           | A schema for associating routes with the Listener using selectors.                                                                                   |
 | [9]  | `kind`             | The kind of the referent.                                                                                                                            |
-| [10] | `from`             | From indicates where Routes will be selected for this Gateway (Default to `Same`).                                                                   |
-| [11] | `selector`         | Routes in namespaces selected by the selector may be used by this Gateway routes to associate with the Gateway.                                      |
-| [12] | `matchLabels`      | A set of route labels used for selecting routes to associate with the Gateway.                                                                       |
+| [10] | `from`             | From indicates in which namespaces the Routes will be selected for this Gateway (Default to `Same`).                                                 |
+| [11] | `selector`         | Selector specifies a set of route labels used for selecting routes to associate with the Gateway.                                                    |
+| [12] | `matchLabels`      | Map of {key,value} pairs used to select routes to associate with the Gateway.                                                                        |
 
-!!! info "Namespace Route selector"
+!!! info "Route Namespace selector"
 
-    When declaring a gateway,
-    you can specify a namespace route selector that state from which namespaces Routes should be selected.
+    The route namespace selector specifies in which namespaces the Gateway Routes should be selected.
     
-    Here is an overview of possible values for this selector:
+    The supported values are:
 
-    | Route select type | Description                                                                   |
-    |-------------------|-------------------------------------------------------------------------------|
-    | `All`             | Routes in all namespaces may be used by this Gateway.                         |
-    | `Same` (default)  | Only Routes in the same namespace as the Gateway may be used by this Gateway. |
+    | Value            | Description                                                                   |
+    |------------------|-------------------------------------------------------------------------------|
+    | `All`            | Routes in all namespaces may be used by this Gateway.                         |
+    | `Same` (default) | Only Routes in the same namespace as the Gateway may be used by this Gateway. |
 
 ### Kind: `HTTPRoute`
 
