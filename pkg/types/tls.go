@@ -32,15 +32,13 @@ func (clientTLS *ClientTLS) CreateTLSConfig(ctx context.Context) (*tls.Config, e
 
 	caPool := x509.NewCertPool()
 	if clientTLS.CA != "" {
-		var ca []byte
+		ca := []byte(clientTLS.CA)
 		if _, errCA := os.Stat(clientTLS.CA); errCA == nil {
 			var err error
 			ca, err = os.ReadFile(clientTLS.CA)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read CA. %w", err)
+				return nil, fmt.Errorf("failed to read CA: %w", err)
 			}
-		} else {
-			ca = []byte(clientTLS.CA)
 		}
 
 		if !caPool.AppendCertsFromPEM(ca) {
@@ -48,32 +46,29 @@ func (clientTLS *ClientTLS) CreateTLSConfig(ctx context.Context) (*tls.Config, e
 		}
 	}
 
-	if !clientTLS.InsecureSkipVerify && (len(clientTLS.Cert) == 0 || len(clientTLS.Key) == 0) {
-		return nil, fmt.Errorf("TLS Certificate or Key file must be set when TLS configuration is created")
-	}
-
-	cert := tls.Certificate{}
-	_, errKeyIsFile := os.Stat(clientTLS.Key)
+	var cert tls.Certificate
 
 	if len(clientTLS.Cert) > 0 && len(clientTLS.Key) > 0 {
+		_, errKeyIsFile := os.Stat(clientTLS.Key)
+
 		var err error
 		if _, errCertIsFile := os.Stat(clientTLS.Cert); errCertIsFile == nil {
-			if errKeyIsFile == nil {
-				cert, err = tls.LoadX509KeyPair(clientTLS.Cert, clientTLS.Key)
-				if err != nil {
-					return nil, fmt.Errorf("failed to load TLS keypair: %w", err)
-				}
-			} else {
+			if errKeyIsFile != nil {
 				return nil, fmt.Errorf("TLS cert is a file, but tls key is not")
 			}
+
+			cert, err = tls.LoadX509KeyPair(clientTLS.Cert, clientTLS.Key)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load TLS keypair: %w", err)
+			}
 		} else {
-			if errKeyIsFile != nil {
-				cert, err = tls.X509KeyPair([]byte(clientTLS.Cert), []byte(clientTLS.Key))
-				if err != nil {
-					return nil, fmt.Errorf("failed to load TLS keypair: %w", err)
-				}
-			} else {
+			if errKeyIsFile == nil {
 				return nil, fmt.Errorf("TLS key is a file, but tls cert is not")
+			}
+
+			cert, err = tls.X509KeyPair([]byte(clientTLS.Cert), []byte(clientTLS.Key))
+			if err != nil {
+				return nil, fmt.Errorf("failed to load TLS keypair: %w", err)
 			}
 		}
 	}
