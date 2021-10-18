@@ -15,7 +15,8 @@ import (
 // ClientTLS holds TLS specific configurations as client
 // CA, Cert and Key can be either path or file contents.
 type ClientTLS struct {
-	CA                 string `description:"TLS CA" json:"ca,omitempty" toml:"ca,omitempty" yaml:"ca,omitempty"`
+	CA string `description:"TLS CA" json:"ca,omitempty" toml:"ca,omitempty" yaml:"ca,omitempty"`
+	// Deprecated: defining the server's TLS policy for TLS Client Authentication on client side has no effect.
 	CAOptional         bool   `description:"TLS CA.Optional" json:"caOptional,omitempty" toml:"caOptional,omitempty" yaml:"caOptional,omitempty" export:"true"`
 	Cert               string `description:"TLS cert" json:"cert,omitempty" toml:"cert,omitempty" yaml:"cert,omitempty"`
 	Key                string `description:"TLS key" json:"key,omitempty" toml:"key,omitempty" yaml:"key,omitempty"`
@@ -30,7 +31,6 @@ func (clientTLS *ClientTLS) CreateTLSConfig(ctx context.Context) (*tls.Config, e
 	}
 
 	caPool := x509.NewCertPool()
-	clientAuth := tls.NoClientCert
 	if clientTLS.CA != "" {
 		var ca []byte
 		if _, errCA := os.Stat(clientTLS.CA); errCA == nil {
@@ -45,12 +45,6 @@ func (clientTLS *ClientTLS) CreateTLSConfig(ctx context.Context) (*tls.Config, e
 
 		if !caPool.AppendCertsFromPEM(ca) {
 			return nil, fmt.Errorf("failed to parse CA")
-		}
-
-		if clientTLS.CAOptional {
-			clientAuth = tls.VerifyClientCertIfGiven
-		} else {
-			clientAuth = tls.RequireAndVerifyClientCert
 		}
 	}
 
@@ -88,6 +82,5 @@ func (clientTLS *ClientTLS) CreateTLSConfig(ctx context.Context) (*tls.Config, e
 		Certificates:       []tls.Certificate{cert},
 		RootCAs:            caPool,
 		InsecureSkipVerify: clientTLS.InsecureSkipVerify,
-		ClientAuth:         clientAuth,
 	}, nil
 }

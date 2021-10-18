@@ -98,7 +98,8 @@ type ForwardAuth struct {
 
 // ClientTLS holds TLS specific configurations as client.
 type ClientTLS struct {
-	CASecret           string `json:"caSecret,omitempty"`
+	CASecret string `json:"caSecret,omitempty"`
+	// Deprecated: defining the server's TLS policy for TLS Client Authentication on client side has no effect.
 	CAOptional         bool   `json:"caOptional,omitempty"`
 	CertSecret         string `json:"certSecret,omitempty"`
 	InsecureSkipVerify bool   `json:"insecureSkipVerify,omitempty"`

@@ -219,6 +219,8 @@ spec:
                     description: ClientTLS holds TLS specific configurations as client.
                     properties:
                       caOptional:
+                        description: 'Deprecated: defining the server''s TLS policy
+                          for TLS Client Authentication on client side has no effect.'
                         type: boolean
                       caSecret:
                         type: string
