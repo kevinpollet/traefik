@@ -8,7 +8,10 @@ import (
 	"github.com/traefik/traefik/v2/pkg/config/static"
 	"github.com/traefik/traefik/v2/pkg/log"
 	"github.com/traefik/traefik/v2/pkg/provider"
+	"github.com/traefik/traefik/v2/pkg/provider/consulcatalog"
 	"github.com/traefik/traefik/v2/pkg/provider/file"
+	"github.com/traefik/traefik/v2/pkg/provider/http"
+	"github.com/traefik/traefik/v2/pkg/provider/kv/consul"
 	"github.com/traefik/traefik/v2/pkg/provider/traefik"
 	"github.com/traefik/traefik/v2/pkg/redactor"
 	"github.com/traefik/traefik/v2/pkg/safe"
@@ -67,69 +70,86 @@ type ProviderAggregator struct {
 }
 
 // NewProviderAggregator returns an aggregate of all the providers configured in the static configuration.
-func NewProviderAggregator(conf static.Providers) ProviderAggregator {
+func NewProviderAggregator(providers static.Providers, namedProviders map[string]static.NamedProvider) ProviderAggregator {
 	p := ProviderAggregator{
-		providersThrottleDuration: time.Duration(conf.ProvidersThrottleDuration),
+		providersThrottleDuration: time.Duration(providers.ProvidersThrottleDuration),
 	}
 
-	if conf.File != nil {
-		p.quietAddProvider(conf.File)
+	if providers.File != nil {
+		p.quietAddProvider(providers.File)
 	}
 
-	if conf.Docker != nil {
-		p.quietAddProvider(conf.Docker)
+	if providers.Docker != nil {
+		p.quietAddProvider(providers.Docker)
 	}
 
-	if conf.Marathon != nil {
-		p.quietAddProvider(conf.Marathon)
+	if providers.Marathon != nil {
+		p.quietAddProvider(providers.Marathon)
 	}
 
-	if conf.Rest != nil {
-		p.quietAddProvider(conf.Rest)
+	if providers.Rest != nil {
+		p.quietAddProvider(providers.Rest)
 	}
 
-	if conf.KubernetesIngress != nil {
-		p.quietAddProvider(conf.KubernetesIngress)
+	if providers.KubernetesIngress != nil {
+		p.quietAddProvider(providers.KubernetesIngress)
 	}
 
-	if conf.KubernetesCRD != nil {
-		p.quietAddProvider(conf.KubernetesCRD)
+	if providers.KubernetesCRD != nil {
+		p.quietAddProvider(providers.KubernetesCRD)
 	}
 
-	if conf.KubernetesGateway != nil {
-		p.quietAddProvider(conf.KubernetesGateway)
+	if providers.KubernetesGateway != nil {
+		p.quietAddProvider(providers.KubernetesGateway)
 	}
 
-	if conf.Rancher != nil {
-		p.quietAddProvider(conf.Rancher)
+	if providers.Rancher != nil {
+		p.quietAddProvider(providers.Rancher)
 	}
 
-	if conf.Ecs != nil {
-		p.quietAddProvider(conf.Ecs)
+	if providers.Ecs != nil {
+		p.quietAddProvider(providers.Ecs)
 	}
 
-	if conf.ConsulCatalog != nil {
-		p.quietAddProvider(conf.ConsulCatalog)
+	if providers.ConsulCatalog != nil {
+		p.quietAddProvider(providers.ConsulCatalog)
 	}
 
-	if conf.Consul != nil {
-		p.quietAddProvider(conf.Consul)
+	if providers.Consul != nil {
+		p.quietAddProvider(providers.Consul)
 	}
 
-	if conf.Etcd != nil {
-		p.quietAddProvider(conf.Etcd)
+	if providers.Etcd != nil {
+		p.quietAddProvider(providers.Etcd)
 	}
 
-	if conf.ZooKeeper != nil {
-		p.quietAddProvider(conf.ZooKeeper)
+	if providers.ZooKeeper != nil {
+		p.quietAddProvider(providers.ZooKeeper)
 	}
 
-	if conf.Redis != nil {
-		p.quietAddProvider(conf.Redis)
+	if providers.Redis != nil {
+		p.quietAddProvider(providers.Redis)
 	}
 
-	if conf.HTTP != nil {
-		p.quietAddProvider(conf.HTTP)
+	if providers.HTTP != nil {
+		p.quietAddProvider(providers.HTTP)
+	}
+
+	// FIXME handle cross provider references
+	for name, np := range namedProviders {
+		switch {
+		case np.HTTP != nil:
+			np.HTTP.Name = http.DefaultProviderName + "-" + name
+			p.quietAddProvider(np.HTTP)
+
+		case np.Consul != nil:
+			np.Consul.Name = consul.DefaultProviderName + "-" + name
+			p.quietAddProvider(np.Consul)
+
+		case np.ConsulCatalog != nil:
+			np.ConsulCatalog.Name = consulcatalog.DefaultProviderName + "-" + name
+			p.quietAddProvider(np.ConsulCatalog)
+		}
 	}
 
 	return p

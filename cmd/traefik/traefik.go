@@ -164,7 +164,7 @@ func runCmd(staticConfiguration *static.Configuration) error {
 }
 
 func setupServer(staticConfiguration *static.Configuration) (*server.Server, error) {
-	providerAggregator := aggregator.NewProviderAggregator(*staticConfiguration.Providers)
+	providerAggregator := aggregator.NewProviderAggregator(*staticConfiguration.Providers, staticConfiguration.NamedProviders)
 
 	ctx := context.Background()
 	routinesPool := safe.NewPool(ctx)

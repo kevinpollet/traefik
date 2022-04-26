@@ -22,6 +22,9 @@ import (
 	"github.com/traefik/traefik/v2/pkg/types"
 )
 
+// FIXME comment
+const DefaultProviderName = "consulcatalog"
+
 // DefaultTemplateRule The default template for the default rule.
 const DefaultTemplateRule = "Host(`{{ normalize .Name }}`)"
 
@@ -43,6 +46,7 @@ type itemData struct {
 
 // Provider holds configurations of the provider.
 type Provider struct {
+	Name              string          `json:"-" toml:"-" yaml:"-"`
 	Constraints       string          `description:"Constraints is an expression that Traefik matches against the container's labels to determine whether to create any route for that container." json:"constraints,omitempty" toml:"constraints,omitempty" yaml:"constraints,omitempty" export:"true"`
 	Endpoint          *EndpointConfig `description:"Consul endpoint settings" json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty" export:"true"`
 	Prefix            string          `description:"Prefix for consul service tags. Default 'traefik'" json:"prefix,omitempty" toml:"prefix,omitempty" yaml:"prefix,omitempty" export:"true"`
@@ -90,6 +94,7 @@ func (p *Provider) SetDefaults() {
 	p.ExposedByDefault = true
 	p.DefaultRule = DefaultTemplateRule
 	p.ServiceName = "traefik"
+	p.Name = DefaultProviderName
 }
 
 // Init the provider.
@@ -115,7 +120,7 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 	}
 
 	pool.GoCtx(func(routineCtx context.Context) {
-		ctxLog := log.With(routineCtx, log.Str(log.ProviderName, "consulcatalog"))
+		ctxLog := log.With(routineCtx, log.Str(log.ProviderName, p.Name))
 		logger := log.FromContext(ctxLog)
 
 		operation := func() error {
@@ -210,7 +215,7 @@ func (p *Provider) loadConfiguration(ctx context.Context, certInfo *connectCert,
 	}
 
 	configurationChan <- dynamic.Message{
-		ProviderName:  "consulcatalog",
+		ProviderName:  p.Name,
 		Configuration: p.buildConfiguration(ctx, data, certInfo),
 	}
 

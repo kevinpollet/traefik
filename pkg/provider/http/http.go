@@ -20,10 +20,14 @@ import (
 	"github.com/traefik/traefik/v2/pkg/types"
 )
 
+// FIXME comment
+const DefaultProviderName = "http"
+
 var _ provider.Provider = (*Provider)(nil)
 
 // Provider is a provider.Provider implementation that queries an HTTP(s) endpoint for a configuration.
 type Provider struct {
+	Name                  string           `json:"-" toml:"-" yaml:"-"`
 	Endpoint              string           `description:"Load configuration from this endpoint." json:"endpoint" toml:"endpoint" yaml:"endpoint"`
 	PollInterval          ptypes.Duration  `description:"Polling interval for endpoint." json:"pollInterval,omitempty" toml:"pollInterval,omitempty" yaml:"pollInterval,omitempty" export:"true"`
 	PollTimeout           ptypes.Duration  `description:"Polling timeout for endpoint." json:"pollTimeout,omitempty" toml:"pollTimeout,omitempty" yaml:"pollTimeout,omitempty" export:"true"`
@@ -34,6 +38,7 @@ type Provider struct {
 
 // SetDefaults sets the default values.
 func (p *Provider) SetDefaults() {
+	p.Name = DefaultProviderName
 	p.PollInterval = ptypes.Duration(5 * time.Second)
 	p.PollTimeout = ptypes.Duration(5 * time.Second)
 }
@@ -69,7 +74,7 @@ func (p *Provider) Init() error {
 // Provide allows the provider to provide configurations to traefik using the given configuration channel.
 func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.Pool) error {
 	pool.GoCtx(func(routineCtx context.Context) {
-		ctxLog := log.With(routineCtx, log.Str(log.ProviderName, "http"))
+		ctxLog := log.With(routineCtx, log.Str(log.ProviderName, p.Name))
 		logger := log.FromContext(ctxLog)
 
 		operation := func() error {
@@ -103,8 +108,9 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 						return fmt.Errorf("cannot decode configuration data: %w", err)
 					}
 
+					// http-toto
 					configurationChan <- dynamic.Message{
-						ProviderName:  "http",
+						ProviderName:  p.Name,
 						Configuration: configuration,
 					}
 

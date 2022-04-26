@@ -8,10 +8,14 @@ import (
 	"github.com/traefik/traefik/v2/pkg/provider/kv"
 )
 
+// FIXME comment
+const DefaultProviderName = "consul"
+
 var _ provider.Provider = (*Provider)(nil)
 
 // Provider holds configurations of the provider.
 type Provider struct {
+	Name        string `json:"-" toml:"-" yaml:"-"`
 	kv.Provider `export:"true"`
 }
 
@@ -19,6 +23,7 @@ type Provider struct {
 func (p *Provider) SetDefaults() {
 	p.Provider.SetDefaults()
 	p.Endpoints = []string{"127.0.0.1:8500"}
+	p.Name = DefaultProviderName
 }
 
 // Init the provider.
@@ -29,5 +34,5 @@ func (p *Provider) Init() error {
 		return errors.New("wildcard namespace is not supported")
 	}
 
-	return p.Provider.Init(store.CONSUL, "consul")
+	return p.Provider.Init(store.CONSUL, p.Name)
 }
