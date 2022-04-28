@@ -15,7 +15,7 @@ var _ provider.Provider = (*Provider)(nil)
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Name        string `json:"-" toml:"-" yaml:"-"`
+	Name        string `description:"Provider's name" json:"name" toml:"name" yaml:"name"`
 	kv.Provider `export:"true"`
 }
 

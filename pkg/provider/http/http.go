@@ -27,7 +27,7 @@ var _ provider.Provider = (*Provider)(nil)
 
 // Provider is a provider.Provider implementation that queries an HTTP(s) endpoint for a configuration.
 type Provider struct {
-	Name                  string           `json:"-" toml:"-" yaml:"-"`
+	Name                  string           `description:"Provider's name used as suffix" json:"name" toml:"name" yaml:"name"`
 	Endpoint              string           `description:"Load configuration from this endpoint." json:"endpoint" toml:"endpoint" yaml:"endpoint"`
 	PollInterval          ptypes.Duration  `description:"Polling interval for endpoint." json:"pollInterval,omitempty" toml:"pollInterval,omitempty" yaml:"pollInterval,omitempty" export:"true"`
 	PollTimeout           ptypes.Duration  `description:"Polling timeout for endpoint." json:"pollTimeout,omitempty" toml:"pollTimeout,omitempty" yaml:"pollTimeout,omitempty" export:"true"`
@@ -41,6 +41,11 @@ func (p *Provider) SetDefaults() {
 	p.Name = DefaultProviderName
 	p.PollInterval = ptypes.Duration(5 * time.Second)
 	p.PollTimeout = ptypes.Duration(5 * time.Second)
+}
+
+// SetName the provider.
+func (p *Provider) SetName(name string) {
+	p.Name = name
 }
 
 // Init the provider.

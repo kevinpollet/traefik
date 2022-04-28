@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/traefik/traefik/v2/pkg/config/dynamic"
@@ -70,7 +71,7 @@ type ProviderAggregator struct {
 }
 
 // NewProviderAggregator returns an aggregate of all the providers configured in the static configuration.
-func NewProviderAggregator(providers static.Providers, namedProviders map[string]static.NamedProvider) ProviderAggregator {
+func NewProviderAggregator(providers static.Providers, multiProviders *static.MultiProviders) ProviderAggregator {
 	p := ProviderAggregator{
 		providersThrottleDuration: time.Duration(providers.ProvidersThrottleDuration),
 	}
@@ -135,24 +136,35 @@ func NewProviderAggregator(providers static.Providers, namedProviders map[string
 		p.quietAddProvider(providers.HTTP)
 	}
 
-	// FIXME handle cross provider references
-	for name, np := range namedProviders {
-		switch {
-		case np.HTTP != nil:
-			np.HTTP.Name = http.DefaultProviderName + "-" + name
-			p.quietAddProvider(np.HTTP)
+	// Returns early since there is no multi-providers configuration.
+	if multiProviders == nil {
+		return p
+	}
 
-		case np.Consul != nil:
-			np.Consul.Name = consul.DefaultProviderName + "-" + name
-			p.quietAddProvider(np.Consul)
+	for i, pvd := range multiProviders.Consul {
+		pvd.Name = providerName(pvd.Name, consul.DefaultProviderName, i)
+		p.quietAddProvider(pvd)
+	}
 
-		case np.ConsulCatalog != nil:
-			np.ConsulCatalog.Name = consulcatalog.DefaultProviderName + "-" + name
-			p.quietAddProvider(np.ConsulCatalog)
-		}
+	for i, pvd := range multiProviders.ConsulCatalog {
+		pvd.Name = providerName(pvd.Name, consulcatalog.DefaultProviderName, i)
+		p.quietAddProvider(pvd)
+	}
+
+	for i, pvd := range multiProviders.HTTP {
+		pvd.Name = providerName(pvd.Name, http.DefaultProviderName, i)
+		p.quietAddProvider(pvd)
 	}
 
 	return p
+}
+
+func providerName(name, typ string, index int) string {
+	if name == typ {
+		return fmt.Sprintf("%s-%d", typ, index)
+	}
+
+	return fmt.Sprintf("%s-%s", typ, name)
 }
 
 func (p *ProviderAggregator) quietAddProvider(provider provider.Provider) {

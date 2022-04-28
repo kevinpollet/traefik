@@ -46,7 +46,7 @@ type itemData struct {
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Name              string          `json:"-" toml:"-" yaml:"-"`
+	Name              string          `description:"Provider's name" json:"name" toml:"name" yaml:"name"`
 	Constraints       string          `description:"Constraints is an expression that Traefik matches against the container's labels to determine whether to create any route for that container." json:"constraints,omitempty" toml:"constraints,omitempty" yaml:"constraints,omitempty" export:"true"`
 	Endpoint          *EndpointConfig `description:"Consul endpoint settings" json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty" export:"true"`
 	Prefix            string          `description:"Prefix for consul service tags. Default 'traefik'" json:"prefix,omitempty" toml:"prefix,omitempty" yaml:"prefix,omitempty" export:"true"`

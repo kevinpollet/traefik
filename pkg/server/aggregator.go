@@ -225,7 +225,7 @@ func sanitizeReferences(pvd string, configuration dynamic.Configuration) dynamic
 	if configuration.HTTP != nil {
 		excludedMiddlewares := make(map[string]struct{})
 		for middlewareName, middleware := range configuration.HTTP.Middlewares {
-			if err := checkMiddleware(pvd, middlewareName, conf.HTTP.Middlewares); err != nil {
+			if err := checkHTTPMiddleware(pvd, middlewareName, conf.HTTP.Middlewares); err != nil {
 				excludedMiddlewares[middlewareName] = struct{}{}
 				log.FromContext(ctx).Errorf("Invalid middleware %q configuration: %s", middlewareName, err)
 				continue
@@ -236,7 +236,7 @@ func sanitizeReferences(pvd string, configuration dynamic.Configuration) dynamic
 
 		excludedServices := make(map[string]struct{})
 		for serviceName, service := range configuration.HTTP.Services {
-			if err := checkService(pvd, serviceName, conf.HTTP.Services); err != nil {
+			if err := checkHTTPService(pvd, serviceName, conf.HTTP.Services); err != nil {
 				excludedServices[serviceName] = struct{}{}
 				log.FromContext(ctx).Errorf("Invalid service %q configuration: %s", serviceName, err)
 				continue
@@ -246,7 +246,7 @@ func sanitizeReferences(pvd string, configuration dynamic.Configuration) dynamic
 		}
 
 		for routerName, router := range configuration.HTTP.Routers {
-			if err := checkRouter(pvd, router, excludedServices, excludedMiddlewares); err != nil {
+			if err := checkHTTPRouter(pvd, router, excludedServices, excludedMiddlewares); err != nil {
 				log.FromContext(ctx).Errorf("Invalid router %q configuration: %s", routerName, err)
 				continue
 			}
@@ -323,8 +323,8 @@ func sanitizeReferences(pvd string, configuration dynamic.Configuration) dynamic
 	return conf
 }
 
-// checkRouter checks that all resources referenced by the given router are allowed.
-func checkRouter(pvd string, router *dynamic.Router, excludedServices, excludedMiddlewares map[string]struct{}) error {
+// checkHTTPRouter checks that all resources referenced by the given router are allowed.
+func checkHTTPRouter(pvd string, router *dynamic.Router, excludedServices, excludedMiddlewares map[string]struct{}) error {
 	if _, excluded := excludedServices[router.Service]; excluded || !isAllowedReference(router.Service, pvd) {
 		return fmt.Errorf("service reference not allowed")
 	}
@@ -364,8 +364,8 @@ func checkUDPRouter(pvd string, router *dynamic.UDPRouter, excludedServices map[
 	return nil
 }
 
-// checkMiddleware checks that all resources referenced by the given middleware are allowed.
-func checkMiddleware(pvd, middlewareName string, middlewares map[string]*dynamic.Middleware) error {
+// checkHTTPMiddleware checks that all resources referenced by the given middleware are allowed.
+func checkHTTPMiddleware(pvd, middlewareName string, middlewares map[string]*dynamic.Middleware) error {
 	if !isAllowedReference(middlewareName, pvd) {
 		return fmt.Errorf("middleware reference not allowed: %s", middlewareName)
 	}
@@ -382,7 +382,7 @@ func checkMiddleware(pvd, middlewareName string, middlewares map[string]*dynamic
 
 	if middleware.Chain != nil {
 		for _, midName := range middleware.Chain.Middlewares {
-			if err := checkMiddleware(pvd, midName, middlewares); err != nil {
+			if err := checkHTTPMiddleware(pvd, midName, middlewares); err != nil {
 				return fmt.Errorf("chain middleware %q: %w", middlewareName, err)
 			}
 		}
@@ -397,12 +397,15 @@ func checkMiddleware(pvd, middlewareName string, middlewares map[string]*dynamic
 	return nil
 }
 
-// checkService checks that all resources referenced by the given service are allowed.
-func checkService(pvd, svcName string, services map[string]*dynamic.Service) error {
+// checkHTTPService checks that all resources referenced by the given service are allowed.
+func checkHTTPService(pvd, svcName string, services map[string]*dynamic.Service) error {
 	if !isAllowedReference(svcName, pvd) {
 		return fmt.Errorf("service reference not allowed: %s", svcName)
 	}
 
+	// Allowing references from other provider types (e.g. file).
+	// This is mandatory because the service will not exist in the map of services.
+	// Thus, this does allow tricky references (e.g.: consul > file > consul).
 	parts := strings.Split(svcName, "@")
 	if len(parts) > 1 && parts[1] != pvd {
 		return nil
@@ -420,21 +423,18 @@ func checkService(pvd, svcName string, services map[string]*dynamic.Service) err
 	}
 
 	if service.Failover != nil {
-		err := checkService(pvd, service.Failover.Service, services)
-		if err != nil {
+		if err := checkHTTPService(pvd, service.Failover.Service, services); err != nil {
 			return err
 		}
 
-		err = checkService(pvd, service.Failover.Fallback, services)
-		if err != nil {
+		if err := checkHTTPService(pvd, service.Failover.Fallback, services); err != nil {
 			return err
 		}
 	}
 
 	if service.Weighted != nil {
 		for _, wrrService := range service.Weighted.Services {
-			err := checkService(pvd, wrrService.Name, services)
-			if err != nil {
+			if err := checkHTTPService(pvd, wrrService.Name, services); err != nil {
 				return err
 			}
 		}
@@ -442,8 +442,7 @@ func checkService(pvd, svcName string, services map[string]*dynamic.Service) err
 
 	if service.Mirroring != nil {
 		for _, mirrorService := range service.Mirroring.Mirrors {
-			err := checkService(pvd, mirrorService.Name, services)
-			if err != nil {
+			if err := checkHTTPService(pvd, mirrorService.Name, services); err != nil {
 				return err
 			}
 		}
@@ -458,6 +457,9 @@ func checkTCPService(pvd, svcName string, services map[string]*dynamic.TCPServic
 		return fmt.Errorf("service reference not allowed: %s", svcName)
 	}
 
+	// Allowing references from other provider types (e.g. file).
+	// This is mandatory because the service will not exist in the map of services.
+	// Thus, this does allow tricky references (e.g.: consul > file > consul).
 	parts := strings.Split(svcName, "@")
 	if len(parts) > 1 && parts[1] != pvd {
 		return nil
@@ -470,8 +472,7 @@ func checkTCPService(pvd, svcName string, services map[string]*dynamic.TCPServic
 
 	if service.Weighted != nil {
 		for _, wrrService := range service.Weighted.Services {
-			err := checkTCPService(pvd, wrrService.Name, services)
-			if err != nil {
+			if err := checkTCPService(pvd, wrrService.Name, services); err != nil {
 				return err
 			}
 		}
@@ -486,6 +487,9 @@ func checkUDPService(pvd, svcName string, services map[string]*dynamic.UDPServic
 		return fmt.Errorf("service reference not allowed: %s", svcName)
 	}
 
+	// Allowing references from other provider types (e.g. file).
+	// This is mandatory because the service will not exist in the map of services.
+	// Thus, this does allow tricky references (e.g.: consul > file > consul).
 	parts := strings.Split(svcName, "@")
 	if len(parts) > 1 && parts[1] != pvd {
 		return nil
@@ -498,8 +502,7 @@ func checkUDPService(pvd, svcName string, services map[string]*dynamic.UDPServic
 
 	if service.Weighted != nil {
 		for _, wrrService := range service.Weighted.Services {
-			err := checkUDPService(pvd, wrrService.Name, services)
-			if err != nil {
+			if err := checkUDPService(pvd, wrrService.Name, services); err != nil {
 				return err
 			}
 		}
