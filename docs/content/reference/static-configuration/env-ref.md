@@ -198,6 +198,9 @@ Local plugins configuration. (Default: ```false```)
 `TRAEFIK_EXPERIMENTAL_LOCALPLUGINS_<NAME>_MODULENAME`:  
 plugin's module name.
 
+`TRAEFIK_EXPERIMENTAL_MULTIPROVIDERS`:  
+Allow multi providers usage. (Default: ```false```)
+
 `TRAEFIK_EXPERIMENTAL_PLUGINS_<NAME>_MODULENAME`:  
 plugin's module name.
 
@@ -381,6 +384,159 @@ Prefix to use for metrics collection. (Default: ```traefik```)
 `TRAEFIK_METRICS_STATSD_PUSHINTERVAL`:  
 StatsD push interval. (Default: ```10```)
 
+`TRAEFIK_MULTIPROVIDERS`:  
+Multi providers configuration (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL`:  
+Enable Consul backend with default settings.
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG`:  
+Enable ConsulCatalog backend with default settings.
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_CACHE`:  
+Use local agent caching for catalog reads. (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_CONNECTAWARE`:  
+Enable Consul Connect support. (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_CONNECTBYDEFAULT`:  
+Consider every service as Connect capable by default. (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_CONSTRAINTS`:  
+Constraints is an expression that Traefik matches against the container's labels to determine whether to create any route for that container.
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_DEFAULTRULE`:  
+Default rule. (Default: ```Host(`{{ normalize .Name }}`)```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_ADDRESS`:  
+The address of the Consul server
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_DATACENTER`:  
+Data center to use. If not provided, the default agent data center is used
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_ENDPOINTWAITTIME`:  
+WaitTime limits how long a Watch will block. If not provided, the agent default values will be used (Default: ```0```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_HTTPAUTH_PASSWORD`:  
+Basic Auth password
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_HTTPAUTH_USERNAME`:  
+Basic Auth username
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_SCHEME`:  
+The URI scheme for the Consul server
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_TLS_CA`:  
+TLS CA
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_TLS_CAOPTIONAL`:  
+TLS CA.Optional (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_TLS_CERT`:  
+TLS cert
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_TLS_INSECURESKIPVERIFY`:  
+TLS insecure skip verify (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_TLS_KEY`:  
+TLS key
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_ENDPOINT_TOKEN`:  
+Token is used to provide a per-request ACL token which overrides the agent's default token
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_EXPOSEDBYDEFAULT`:  
+Expose containers by default. (Default: ```true```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_NAME`:  
+Provider's name. (Default: ```consulcatalog```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_NAMESPACE`:  
+Sets the namespace used to discover services (Consul Enterprise only).
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_PREFIX`:  
+Prefix for consul service tags. Default 'traefik' (Default: ```traefik```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_REFRESHINTERVAL`:  
+Interval for check Consul API. Default 15s (Default: ```15000000000```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_REQUIRECONSISTENT`:  
+Forces the read to be fully consistent. (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_SERVICENAME`:  
+Name of the Traefik service in Consul Catalog (needs to be registered via the orchestrator or manually). (Default: ```traefik```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_STALE`:  
+Use stale consistency for catalog reads. (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSULCATALOG_n_WATCH`:  
+Watch Consul API events. (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_ENDPOINTS`:  
+KV store endpoints (Default: ```127.0.0.1:8500```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_NAME`:  
+Provider's name. (Default: ```consul```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_NAMESPACE`:  
+KV Namespace
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_PASSWORD`:  
+KV Password
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_ROOTKEY`:  
+Root key used for KV store (Default: ```traefik```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_TLS_CA`:  
+TLS CA
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_TLS_CAOPTIONAL`:  
+TLS CA.Optional (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_TLS_CERT`:  
+TLS cert
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_TLS_INSECURESKIPVERIFY`:  
+TLS insecure skip verify (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_TLS_KEY`:  
+TLS key
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_TOKEN`:  
+KV Token
+
+`TRAEFIK_MULTIPROVIDERS_CONSUL_n_USERNAME`:  
+KV Username
+
+`TRAEFIK_MULTIPROVIDERS_HTTP`:  
+Enable HTTP backend with default settings.
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_ENDPOINT`:  
+Load configuration from this endpoint.
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_NAME`:  
+Provider's name. (Default: ```http```)
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_POLLINTERVAL`:  
+Polling interval for endpoint. (Default: ```5000000000```)
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_POLLTIMEOUT`:  
+Polling timeout for endpoint. (Default: ```5000000000```)
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_TLS_CA`:  
+TLS CA
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_TLS_CAOPTIONAL`:  
+TLS CA.Optional (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_TLS_CERT`:  
+TLS cert
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_TLS_INSECURESKIPVERIFY`:  
+TLS insecure skip verify (Default: ```false```)
+
+`TRAEFIK_MULTIPROVIDERS_HTTP_n_TLS_KEY`:  
+TLS key
+
 `TRAEFIK_PILOT_DASHBOARD`:  
 Enable Traefik Pilot in the dashboard. (Default: ```true```)
 
@@ -459,6 +615,9 @@ Token is used to provide a per-request ACL token which overrides the agent's def
 `TRAEFIK_PROVIDERS_CONSULCATALOG_EXPOSEDBYDEFAULT`:  
 Expose containers by default. (Default: ```true```)
 
+`TRAEFIK_PROVIDERS_CONSULCATALOG_NAME`:  
+Provider's name. (Default: ```consulcatalog```)
+
 `TRAEFIK_PROVIDERS_CONSULCATALOG_NAMESPACE`:  
 Sets the namespace used to discover services (Consul Enterprise only).
 
@@ -482,6 +641,9 @@ Watch Consul API events. (Default: ```false```)
 
 `TRAEFIK_PROVIDERS_CONSUL_ENDPOINTS`:  
 KV store endpoints (Default: ```127.0.0.1:8500```)
+
+`TRAEFIK_PROVIDERS_CONSUL_NAME`:  
+Provider's name. (Default: ```consul```)
 
 `TRAEFIK_PROVIDERS_CONSUL_NAMESPACE`:  
 KV Namespace
@@ -644,6 +806,9 @@ Enable HTTP backend with default settings. (Default: ```false```)
 
 `TRAEFIK_PROVIDERS_HTTP_ENDPOINT`:  
 Load configuration from this endpoint.
+
+`TRAEFIK_PROVIDERS_HTTP_NAME`:  
+Provider's name. (Default: ```http```)
 
 `TRAEFIK_PROVIDERS_HTTP_POLLINTERVAL`:  
 Polling interval for endpoint. (Default: ```5```)

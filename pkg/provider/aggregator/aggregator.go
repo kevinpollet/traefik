@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/traefik/traefik/v2/pkg/config/dynamic"
@@ -142,29 +141,21 @@ func NewProviderAggregator(providers static.Providers, multiProviders *static.Mu
 	}
 
 	for i, pvd := range multiProviders.Consul {
-		pvd.Name = multiProviderName(pvd.Name, consul.DefaultProviderName, i)
+		pvd.Name = provider.MultiProviderName(pvd.Name, consul.ProviderType, i)
 		p.quietAddProvider(provider.MultiProvider{Provider: pvd})
 	}
 
 	for i, pvd := range multiProviders.ConsulCatalog {
-		pvd.Name = multiProviderName(pvd.Name, consulcatalog.DefaultProviderName, i)
+		pvd.Name = provider.MultiProviderName(pvd.Name, consulcatalog.ProviderType, i)
 		p.quietAddProvider(provider.MultiProvider{Provider: pvd})
 	}
 
 	for i, pvd := range multiProviders.HTTP {
-		pvd.Name = multiProviderName(pvd.Name, http.DefaultProviderName, i)
+		pvd.Name = provider.MultiProviderName(pvd.Name, http.ProviderType, i)
 		p.quietAddProvider(provider.MultiProvider{Provider: pvd})
 	}
 
 	return p
-}
-
-func multiProviderName(name, typ string, index int) string {
-	if name == typ {
-		return fmt.Sprintf("%s-%d", typ, index)
-	}
-
-	return fmt.Sprintf("%s-%s", typ, name)
 }
 
 func (p *ProviderAggregator) quietAddProvider(provider provider.Provider) {

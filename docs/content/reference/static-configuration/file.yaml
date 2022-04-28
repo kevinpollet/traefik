@@ -262,6 +262,7 @@ providers:
       key: foobar
       insecureSkipVerify: true
   http:
+    name: foobar
     endpoint: foobar
     pollInterval: 42s
     pollTimeout: 42s
@@ -274,6 +275,118 @@ providers:
   plugin:
     Descriptor0: {}
     Descriptor1: {}
+multiProviders:
+  consul:
+    - name: foobar
+      rootKey: foobar
+      endpoints:
+        - foobar
+        - foobar
+      username: foobar
+      password: foobar
+      token: foobar
+      namespace: foobar
+      tls:
+        ca: foobar
+        caOptional: true
+        cert: foobar
+        key: foobar
+        insecureSkipVerify: true
+    - name: foobar
+      rootKey: foobar
+      endpoints:
+        - foobar
+        - foobar
+      username: foobar
+      password: foobar
+      token: foobar
+      namespace: foobar
+      tls:
+        ca: foobar
+        caOptional: true
+        cert: foobar
+        key: foobar
+        insecureSkipVerify: true
+  consulCatalog:
+    - name: foobar
+      constraints: foobar
+      prefix: foobar
+      refreshInterval: 42s
+      requireConsistent: true
+      stale: true
+      cache: true
+      exposedByDefault: true
+      defaultRule: foobar
+      connectAware: true
+      connectByDefault: true
+      serviceName: foobar
+      namespace: foobar
+      watch: true
+      endpoint:
+        address: foobar
+        scheme: foobar
+        datacenter: foobar
+        token: foobar
+        endpointWaitTime: 42s
+        tls:
+          ca: foobar
+          caOptional: true
+          cert: foobar
+          key: foobar
+          insecureSkipVerify: true
+        httpAuth:
+          username: foobar
+          password: foobar
+    - name: foobar
+      constraints: foobar
+      prefix: foobar
+      refreshInterval: 42s
+      requireConsistent: true
+      stale: true
+      cache: true
+      exposedByDefault: true
+      defaultRule: foobar
+      connectAware: true
+      connectByDefault: true
+      serviceName: foobar
+      namespace: foobar
+      watch: true
+      endpoint:
+        address: foobar
+        scheme: foobar
+        datacenter: foobar
+        token: foobar
+        endpointWaitTime: 42s
+        tls:
+          ca: foobar
+          caOptional: true
+          cert: foobar
+          key: foobar
+          insecureSkipVerify: true
+        httpAuth:
+          username: foobar
+          password: foobar
+  http:
+    - name: foobar
+      endpoint: foobar
+      pollInterval: 42s
+      pollTimeout: 42s
+      tls:
+        ca: foobar
+        caOptional: true
+        cert: foobar
+        key: foobar
+        insecureSkipVerify: true
+    - name: foobar
+      endpoint: foobar
+      pollInterval: 42s
+      pollTimeout: 42s
+      tls:
+        ca: foobar
+        caOptional: true
+        cert: foobar
+        key: foobar
+        insecureSkipVerify: true
 api:
   insecure: true
   dashboard: true

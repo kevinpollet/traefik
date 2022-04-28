@@ -22,8 +22,8 @@ import (
 	"github.com/traefik/traefik/v2/pkg/types"
 )
 
-// FIXME comment
-const DefaultProviderName = "consulcatalog"
+// ProviderType is the ConsulCatalog provider type name.
+const ProviderType = "consulcatalog"
 
 // DefaultTemplateRule The default template for the default rule.
 const DefaultTemplateRule = "Host(`{{ normalize .Name }}`)"
@@ -46,7 +46,7 @@ type itemData struct {
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Name              string          `description:"Provider's name" json:"name" toml:"name" yaml:"name"`
+	Name              string          `description:"Provider's name." json:"name,omitempty" toml:"name,omitempty" yaml:"name,omitempty"`
 	Constraints       string          `description:"Constraints is an expression that Traefik matches against the container's labels to determine whether to create any route for that container." json:"constraints,omitempty" toml:"constraints,omitempty" yaml:"constraints,omitempty" export:"true"`
 	Endpoint          *EndpointConfig `description:"Consul endpoint settings" json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty" export:"true"`
 	Prefix            string          `description:"Prefix for consul service tags. Default 'traefik'" json:"prefix,omitempty" toml:"prefix,omitempty" yaml:"prefix,omitempty" export:"true"`
@@ -94,7 +94,7 @@ func (p *Provider) SetDefaults() {
 	p.ExposedByDefault = true
 	p.DefaultRule = DefaultTemplateRule
 	p.ServiceName = "traefik"
-	p.Name = DefaultProviderName
+	p.Name = ProviderType
 }
 
 // Init the provider.

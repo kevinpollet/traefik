@@ -8,14 +8,14 @@ import (
 	"github.com/traefik/traefik/v2/pkg/provider/kv"
 )
 
-// FIXME comment
-const DefaultProviderName = "consul"
+// ProviderType is the Consul provider type name.
+const ProviderType = "consul"
 
 var _ provider.Provider = (*Provider)(nil)
 
 // Provider holds configurations of the provider.
 type Provider struct {
-	Name        string `description:"Provider's name" json:"name" toml:"name" yaml:"name"`
+	Name        string `description:"Provider's name." json:"name,omitempty" toml:"name,omitempty" yaml:"name,omitempty"`
 	kv.Provider `export:"true"`
 }
 
@@ -23,7 +23,7 @@ type Provider struct {
 func (p *Provider) SetDefaults() {
 	p.Provider.SetDefaults()
 	p.Endpoints = []string{"127.0.0.1:8500"}
-	p.Name = DefaultProviderName
+	p.Name = ProviderType
 }
 
 // Init the provider.

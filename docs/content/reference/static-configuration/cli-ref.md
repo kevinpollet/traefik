@@ -198,6 +198,9 @@ Local plugins configuration. (Default: ```false```)
 `--experimental.localplugins.<name>.modulename`:  
 plugin's module name.
 
+`--experimental.multiproviders`:  
+Allow multi providers usage. (Default: ```false```)
+
 `--experimental.plugins.<name>.modulename`:  
 plugin's module name.
 
@@ -381,6 +384,159 @@ Prefix to use for metrics collection. (Default: ```traefik```)
 `--metrics.statsd.pushinterval`:  
 StatsD push interval. (Default: ```10```)
 
+`--multiproviders`:  
+Multi providers configuration (Default: ```false```)
+
+`--multiproviders.consul`:  
+Enable Consul backend with default settings.
+
+`--multiproviders.consul[n].endpoints`:  
+KV store endpoints (Default: ```127.0.0.1:8500```)
+
+`--multiproviders.consul[n].name`:  
+Provider's name. (Default: ```consul```)
+
+`--multiproviders.consul[n].namespace`:  
+KV Namespace
+
+`--multiproviders.consul[n].password`:  
+KV Password
+
+`--multiproviders.consul[n].rootkey`:  
+Root key used for KV store (Default: ```traefik```)
+
+`--multiproviders.consul[n].tls.ca`:  
+TLS CA
+
+`--multiproviders.consul[n].tls.caoptional`:  
+TLS CA.Optional (Default: ```false```)
+
+`--multiproviders.consul[n].tls.cert`:  
+TLS cert
+
+`--multiproviders.consul[n].tls.insecureskipverify`:  
+TLS insecure skip verify (Default: ```false```)
+
+`--multiproviders.consul[n].tls.key`:  
+TLS key
+
+`--multiproviders.consul[n].token`:  
+KV Token
+
+`--multiproviders.consul[n].username`:  
+KV Username
+
+`--multiproviders.consulcatalog`:  
+Enable ConsulCatalog backend with default settings.
+
+`--multiproviders.consulcatalog[n].cache`:  
+Use local agent caching for catalog reads. (Default: ```false```)
+
+`--multiproviders.consulcatalog[n].connectaware`:  
+Enable Consul Connect support. (Default: ```false```)
+
+`--multiproviders.consulcatalog[n].connectbydefault`:  
+Consider every service as Connect capable by default. (Default: ```false```)
+
+`--multiproviders.consulcatalog[n].constraints`:  
+Constraints is an expression that Traefik matches against the container's labels to determine whether to create any route for that container.
+
+`--multiproviders.consulcatalog[n].defaultrule`:  
+Default rule. (Default: ```Host(`{{ normalize .Name }}`)```)
+
+`--multiproviders.consulcatalog[n].endpoint.address`:  
+The address of the Consul server
+
+`--multiproviders.consulcatalog[n].endpoint.datacenter`:  
+Data center to use. If not provided, the default agent data center is used
+
+`--multiproviders.consulcatalog[n].endpoint.endpointwaittime`:  
+WaitTime limits how long a Watch will block. If not provided, the agent default values will be used (Default: ```0```)
+
+`--multiproviders.consulcatalog[n].endpoint.httpauth.password`:  
+Basic Auth password
+
+`--multiproviders.consulcatalog[n].endpoint.httpauth.username`:  
+Basic Auth username
+
+`--multiproviders.consulcatalog[n].endpoint.scheme`:  
+The URI scheme for the Consul server
+
+`--multiproviders.consulcatalog[n].endpoint.tls.ca`:  
+TLS CA
+
+`--multiproviders.consulcatalog[n].endpoint.tls.caoptional`:  
+TLS CA.Optional (Default: ```false```)
+
+`--multiproviders.consulcatalog[n].endpoint.tls.cert`:  
+TLS cert
+
+`--multiproviders.consulcatalog[n].endpoint.tls.insecureskipverify`:  
+TLS insecure skip verify (Default: ```false```)
+
+`--multiproviders.consulcatalog[n].endpoint.tls.key`:  
+TLS key
+
+`--multiproviders.consulcatalog[n].endpoint.token`:  
+Token is used to provide a per-request ACL token which overrides the agent's default token
+
+`--multiproviders.consulcatalog[n].exposedbydefault`:  
+Expose containers by default. (Default: ```true```)
+
+`--multiproviders.consulcatalog[n].name`:  
+Provider's name. (Default: ```consulcatalog```)
+
+`--multiproviders.consulcatalog[n].namespace`:  
+Sets the namespace used to discover services (Consul Enterprise only).
+
+`--multiproviders.consulcatalog[n].prefix`:  
+Prefix for consul service tags. Default 'traefik' (Default: ```traefik```)
+
+`--multiproviders.consulcatalog[n].refreshinterval`:  
+Interval for check Consul API. Default 15s (Default: ```15000000000```)
+
+`--multiproviders.consulcatalog[n].requireconsistent`:  
+Forces the read to be fully consistent. (Default: ```false```)
+
+`--multiproviders.consulcatalog[n].servicename`:  
+Name of the Traefik service in Consul Catalog (needs to be registered via the orchestrator or manually). (Default: ```traefik```)
+
+`--multiproviders.consulcatalog[n].stale`:  
+Use stale consistency for catalog reads. (Default: ```false```)
+
+`--multiproviders.consulcatalog[n].watch`:  
+Watch Consul API events. (Default: ```false```)
+
+`--multiproviders.http`:  
+Enable HTTP backend with default settings.
+
+`--multiproviders.http[n].endpoint`:  
+Load configuration from this endpoint.
+
+`--multiproviders.http[n].name`:  
+Provider's name. (Default: ```http```)
+
+`--multiproviders.http[n].pollinterval`:  
+Polling interval for endpoint. (Default: ```5000000000```)
+
+`--multiproviders.http[n].polltimeout`:  
+Polling timeout for endpoint. (Default: ```5000000000```)
+
+`--multiproviders.http[n].tls.ca`:  
+TLS CA
+
+`--multiproviders.http[n].tls.caoptional`:  
+TLS CA.Optional (Default: ```false```)
+
+`--multiproviders.http[n].tls.cert`:  
+TLS cert
+
+`--multiproviders.http[n].tls.insecureskipverify`:  
+TLS insecure skip verify (Default: ```false```)
+
+`--multiproviders.http[n].tls.key`:  
+TLS key
+
 `--pilot.dashboard`:  
 Enable Traefik Pilot in the dashboard. (Default: ```true```)
 
@@ -404,6 +560,9 @@ Enable Consul backend with default settings. (Default: ```false```)
 
 `--providers.consul.endpoints`:  
 KV store endpoints (Default: ```127.0.0.1:8500```)
+
+`--providers.consul.name`:  
+Provider's name. (Default: ```consul```)
 
 `--providers.consul.namespace`:  
 KV Namespace
@@ -491,6 +650,9 @@ Token is used to provide a per-request ACL token which overrides the agent's def
 
 `--providers.consulcatalog.exposedbydefault`:  
 Expose containers by default. (Default: ```true```)
+
+`--providers.consulcatalog.name`:  
+Provider's name. (Default: ```consulcatalog```)
 
 `--providers.consulcatalog.namespace`:  
 Sets the namespace used to discover services (Consul Enterprise only).
@@ -644,6 +806,9 @@ Enable HTTP backend with default settings. (Default: ```false```)
 
 `--providers.http.endpoint`:  
 Load configuration from this endpoint.
+
+`--providers.http.name`:  
+Provider's name. (Default: ```http```)
 
 `--providers.http.pollinterval`:  
 Polling interval for endpoint. (Default: ```5```)
