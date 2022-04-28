@@ -142,24 +142,24 @@ func NewProviderAggregator(providers static.Providers, multiProviders *static.Mu
 	}
 
 	for i, pvd := range multiProviders.Consul {
-		pvd.Name = providerName(pvd.Name, consul.DefaultProviderName, i)
-		p.quietAddProvider(pvd)
+		pvd.Name = multiProviderName(pvd.Name, consul.DefaultProviderName, i)
+		p.quietAddProvider(provider.MultiProvider{Provider: pvd})
 	}
 
 	for i, pvd := range multiProviders.ConsulCatalog {
-		pvd.Name = providerName(pvd.Name, consulcatalog.DefaultProviderName, i)
-		p.quietAddProvider(pvd)
+		pvd.Name = multiProviderName(pvd.Name, consulcatalog.DefaultProviderName, i)
+		p.quietAddProvider(provider.MultiProvider{Provider: pvd})
 	}
 
 	for i, pvd := range multiProviders.HTTP {
-		pvd.Name = providerName(pvd.Name, http.DefaultProviderName, i)
-		p.quietAddProvider(pvd)
+		pvd.Name = multiProviderName(pvd.Name, http.DefaultProviderName, i)
+		p.quietAddProvider(provider.MultiProvider{Provider: pvd})
 	}
 
 	return p
 }
 
-func providerName(name, typ string, index int) string {
+func multiProviderName(name, typ string, index int) string {
 	if name == typ {
 		return fmt.Sprintf("%s-%d", typ, index)
 	}

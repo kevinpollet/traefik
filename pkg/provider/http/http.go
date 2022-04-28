@@ -113,7 +113,6 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 						return fmt.Errorf("cannot decode configuration data: %w", err)
 					}
 
-					// http-toto
 					configurationChan <- dynamic.Message{
 						ProviderName:  p.Name,
 						Configuration: configuration,

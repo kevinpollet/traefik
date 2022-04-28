@@ -267,18 +267,9 @@ func (c *Configuration) SetEffectiveConfiguration() {
 		c.Pilot.SetDefaults()
 	}
 
-	// Disable Gateway API provider if not enabled in experimental
+	// Disable Gateway API provider if not enabled in experimental.
 	if c.Experimental == nil || !c.Experimental.KubernetesGateway {
 		c.Providers.KubernetesGateway = nil
-	}
-
-	if c.Experimental == nil || !c.Experimental.HTTP3 {
-		for epName, ep := range c.EntryPoints {
-			if ep.HTTP3 != nil {
-				ep.HTTP3 = nil
-				log.WithoutContext().Debugf("Disabling HTTP3 configuration for entryPoint %q: HTTP3 is disabled in the experimental configuration section", epName)
-			}
-		}
 	}
 
 	// Configure Gateway API provider
@@ -290,6 +281,24 @@ func (c *Configuration) SetEffectiveConfiguration() {
 		}
 
 		c.Providers.KubernetesGateway.EntryPoints = entryPoints
+	}
+
+	if c.Experimental == nil || !c.Experimental.HTTP3 {
+		for epName, ep := range c.EntryPoints {
+			if ep.HTTP3 != nil {
+				ep.HTTP3 = nil
+				log.WithoutContext().Warnf("Disabling HTTP3 configuration for entryPoint %q: HTTP3 is disabled in the experimental configuration section", epName)
+			}
+		}
+	}
+
+	// Disable multi-providers feature if not enabled in experimental.
+	if c.Experimental == nil || !c.Experimental.MultiProviders {
+		if c.MultiProviders != nil {
+			log.WithoutContext().Warnf("Disabling MultiProviders configuration: MultiProviders is disabled in the experimental configuration section")
+		}
+
+		c.MultiProviders = nil
 	}
 
 	c.initACMEProvider()
