@@ -16,7 +16,7 @@ type MultiProvider struct {
 	Provider
 }
 
-// Provide calls the provider Provide method and intercepts its configuration message to sanitize it.
+// Provide calls the provider Provide method and intercepts its configuration message to remove cross provider references.
 func (m MultiProvider) Provide(configurationChan chan<- dynamic.Message, pool *safe.Pool) error {
 	localChan := make(chan dynamic.Message, 1)
 	pool.GoCtx(func(ctx context.Context) {
@@ -35,6 +35,8 @@ func (m MultiProvider) Provide(configurationChan chan<- dynamic.Message, pool *s
 }
 
 // sanitizeReferences removes disallowed cross provider references.
+// This aims to guarantee the isolation of usable resources between providers instances (cross-provider references).
+// This is done especially in regards of providers (orchestrators) that provides a namespace isolation feature.
 // TODO handle copy of models ?
 func sanitizeReferences(pvd string, configuration *dynamic.Configuration) *dynamic.Configuration {
 	conf := dynamic.Configuration{
