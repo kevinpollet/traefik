@@ -2,13 +2,13 @@ package integration
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -26,7 +26,6 @@ type NomadSuite struct {
 	BaseSuite
 
 	nomadClient *api.Client
-	installDir  string
 	binary      string
 	command     *exec.Cmd
 	output      *bytes.Buffer
@@ -42,41 +41,72 @@ func (ns *NomadSuite) SetUpSuite(c *check.C) {
 	// 	return
 	// }
 
-	// install nomad binary in tmp directory
-	err := ns.install()
-	c.Check(err, check.IsNil)
+	// FIXME needed?
+	tmpDir := c.MkDir()
+	fmt.Println(tmpDir)
 
-	ns.binary = filepath.Join(ns.installDir, "nomad")
+	// install Nomad binary in the given directory
+	ns.install(c, tmpDir)
+
+	ns.binary = filepath.Join(tmpDir, "nomad")
 
 	// version check, make sure we can run the binary
 	version, err := ns.execute(ns.binary, []string{"version"})
-	c.Check(err, check.IsNil)
+	c.Assert(err, check.IsNil)
 	c.Assert(strings.Contains(version, nomadVersion), check.Equals, true)
 }
 
+// FIXME rexork
+func (ns *NomadSuite) TearDownTest(c *check.C) {
+	err := ns.stop()
+	c.Assert(err, check.IsNil)
+}
+
+func (ns *NomadSuite) install(c *check.C, dir string) {
+	archiveName := fmt.Sprintf("nomad_%s_%s_%s.zip", nomadVersion, runtime.GOOS, runtime.GOARCH)
+	url := fmt.Sprintf("https://releases.hashicorp.com/nomad/%s/%s", nomadVersion, archiveName)
+
+	archive, err := os.Create(path.Join(dir, archiveName))
+	c.Assert(err, check.IsNil)
+
+	res, err := http.Get(url)
+	c.Assert(err, check.IsNil)
+
+	defer func() { _ = res.Body.Close() }()
+
+	_, err = io.Copy(archive, res.Body)
+	c.Assert(err, check.IsNil)
+
+	_, err = ns.execute("unzip", []string{
+		"-o",      // overwrite
+		"-d", dir, // destination directory
+		path.Join(dir, archiveName), // file to unpack
+	})
+	c.Assert(err, check.IsNil)
+}
+
+// FIXME keep it?
 func (ns *NomadSuite) execute(binary string, args []string) (string, error) {
 	cmd := exec.Command(binary, args...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
 
-func (ns *NomadSuite) start(binary, address string, args []string) error {
+func (ns *NomadSuite) start(c *check.C, binary, address string, args []string) {
 	ns.command = exec.Command(binary, args...)
 	ns.output = new(bytes.Buffer)
 	ns.command.Stdout = ns.output
 	ns.command.Stderr = ns.output
+
 	err := ns.command.Start()
-	if err != nil {
-		return err
-	}
-	ns.nomadClient, err = api.NewClient(&api.Config{
-		Address: address,
-	})
-	if err != nil {
-		return err
-	}
-	// wait for nomad to elect itself
-	return ns.waitForLeader()
+	c.Assert(err, check.IsNil)
+
+	ns.nomadClient, err = api.NewClient(&api.Config{Address: address})
+	c.Assert(err, check.IsNil)
+
+	// Wait for nomad to elect itself.
+	err = ns.waitForLeader()
+	c.Assert(err, check.IsNil)
 }
 
 func (ns *NomadSuite) stop() error {
@@ -100,6 +130,7 @@ func (ns *NomadSuite) run(filename string, groups int) error {
 	if err != nil {
 		return err
 	}
+
 	jobString = strings.Replace(jobString, "EXECUTABLE", traefikAbs, 1)
 	job, err := ns.nomadClient.Jobs().ParseHCL(jobString, true)
 	if err != nil {
@@ -156,60 +187,6 @@ func (ns *NomadSuite) run(filename string, groups int) error {
 	})
 }
 
-func (ns *NomadSuite) exists(path string) bool {
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	return true
-}
-
-func (ns *NomadSuite) install() error {
-	ns.installDir = os.TempDir()
-	system := runtime.GOOS
-	arch := runtime.GOARCH
-	version := nomadVersion
-	uri := fmt.Sprintf("https://releases.hashicorp.com/nomad/%s/nomad_%s_%s_%s.zip", version, version, system, arch)
-	archive := filepath.Join(ns.installDir, "nomad.zip")
-
-	if ns.exists(archive) {
-		return nil
-	}
-
-	bin, err := os.Create(archive)
-	if err != nil {
-		return err
-	}
-	response, _ := http.Get(uri)
-	defer func() {
-		_ = response.Body.Close()
-	}()
-	_, err = io.Copy(bin, response.Body)
-	if err != nil {
-		return err
-	}
-
-	_, err = ns.execute("unzip", []string{
-		"-o",                // overwrite
-		"-d", ns.installDir, // destination directory
-		archive, // file to unpack
-	})
-	return err
-}
-
-func (ns *NomadSuite) TearDownSuite(c *check.C) {
-	err := ns.stop()
-	c.Check(err, check.IsNil)
-
-	binary := filepath.Join(ns.installDir, "nomad")
-	zip := filepath.Join(ns.installDir, "nomad.zip")
-
-	err = os.Remove(binary)
-	c.Check(err, check.IsNil)
-
-	err = os.Remove(zip)
-	c.Check(err, check.IsNil)
-}
-
 func (ns *NomadSuite) waitForLeader() error {
 	return try.Do(15*time.Second, func() error {
 		leader, err := ns.nomadClient.Status().Leader()
@@ -221,15 +198,17 @@ func (ns *NomadSuite) waitForLeader() error {
 }
 
 func (ns *NomadSuite) Test_Defaults(c *check.C) {
-	// start nomad in dev mode (server + client)
-	// traefik will be configured with defaults (except refresh interval)
+	// Start nomad in dev mode (server + client).
+	// traefik will be configured with defaults (except refresh interval).
 	address := "http://127.0.0.1:4646"
-	err := ns.start(ns.binary, address, []string{"agent", "-dev", "-log-level=INFO"})
-	c.Check(err, check.IsNil)
+
+	ns.start(c, ns.binary, address, []string{"agent", "-dev", "-log-level=INFO"})
 
 	// run the basic example
-	err = ns.run("exposed_by_default.nomad", 3)
-	c.Check(err, check.IsNil)
+	err := ns.run("exposed_by_default.nomad", 3)
+	c.Assert(err, check.IsNil)
+
+	time.Sleep(time.Hour)
 
 	// make request to traefik for whoami service
 	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:8899/", nil)
@@ -243,28 +222,25 @@ func (ns *NomadSuite) Test_Defaults(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	// make request to traefik for whoami2 service, which is disabled
-	req2, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:8899/", nil)
+	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:8899/", nil)
 	c.Assert(err, check.IsNil)
 	req.Host = "whoami2"
 
 	// ensure we got an expected response (404)
-	err = try.Request(req2, 4*time.Second,
+	err = try.Request(req, 4*time.Second,
 		try.StatusCodeIs(404))
 	c.Assert(err, check.IsNil)
-
-	err = ns.stop()
-	c.Check(err, check.IsNil)
 }
 
 func (ns *NomadSuite) Test_NotEnabledByDefault(c *check.C) {
 	// start nomad in dev mode (server + client)
 	// traefik will be configured with .exposedByDefault=false
 	address := "http://127.0.0.2:4646"
-	err := ns.start(ns.binary, address, []string{"agent", "-dev", "-log-level=INFO", "-bind=127.0.0.2"})
-	c.Check(err, check.IsNil)
+
+	ns.start(c, ns.binary, address, []string{"agent", "-dev", "-log-level=INFO", "-bind=127.0.0.2"})
 
 	// run the not-exposed-by-default example
-	err = ns.run("not_exposed_by_default.nomad", 3)
+	err := ns.run("not_exposed_by_default.nomad", 3)
 	c.Check(err, check.IsNil)
 
 	// make request to traefik for whoami service
@@ -285,11 +261,11 @@ func (ns *NomadSuite) Test_NotEnabledByDefault(c *check.C) {
 func (ns *NomadSuite) Test_ConstraintByTag(c *check.C) {
 	// start nomad in dev mode (server + client)
 	address := "http://127.0.0.3:4646"
-	err := ns.start(ns.binary, address, []string{"agent", "-dev", "-log-level=INFO", "-bind=127.0.0.3"})
-	c.Check(err, check.IsNil)
+
+	ns.start(c, ns.binary, address, []string{"agent", "-dev", "-log-level=INFO", "-bind=127.0.0.3"})
 
 	// run the example where services are grouped by tags
-	err = ns.run("constraint_by_tag.nomad", 3)
+	err := ns.run("constraint_by_tag.nomad", 3)
 	c.Check(err, check.IsNil)
 
 	// make request to traefik for whoami service
@@ -310,11 +286,11 @@ func (ns *NomadSuite) Test_ConstraintByTag(c *check.C) {
 func (ns *NomadSuite) Test_QueryByNamespace(c *check.C) {
 	// start nomad in dev mode (server + client)
 	address := "http://127.0.0.4:4646"
-	err := ns.start(ns.binary, address, []string{"agent", "-dev", "-log-level=INFO", "-bind=127.0.0.4"})
-	c.Check(err, check.IsNil)
+
+	ns.start(c, ns.binary, address, []string{"agent", "-dev", "-log-level=INFO", "-bind=127.0.0.4"})
 
 	// create the "east" namespace
-	_, err = ns.execute(ns.binary, []string{"namespace", "apply", "-address=http://127.0.0.4:4646", "-description=East Side", "east"})
+	_, err := ns.execute(ns.binary, []string{"namespace", "apply", "-address=http://127.0.0.4:4646", "-description=East Side", "east"})
 	c.Check(err, check.IsNil)
 
 	// run the example where services are in namespaces

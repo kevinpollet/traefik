@@ -13,11 +13,11 @@ job "who" {
       driver = "raw_exec"
       config {
         command = "EXECUTABLE"
-        args = [
+        args    = [
           "--log.level=DEBUG",
           "--entryPoints.web.address=:8899",
-          "--providers=nomad",
           "--providers.nomad.refreshInterval=1s",
+          "--api.insecure",
         ]
       }
 
@@ -30,7 +30,6 @@ job "who" {
 
   group "who-default" {
     network {
-      mode = "bridge"
       port "http" {
         to = 80
       }
@@ -40,10 +39,7 @@ job "who" {
       name     = "whoami"
       provider = "nomad"
       port     = "http"
-      tags = [
-        // enable by default
-         "traefik.http.routers.example.entrypoints=web",
-      ]
+      tags     = [] // Enabled by default.
     }
 
     task "whoami" {
@@ -51,7 +47,11 @@ job "who" {
 
       config {
         image = "traefik/whoami:v1.8.0"
-        args  = ["-verbose", "-name", "whoami-default"]
+        args  = [
+          "-verbose",
+          "-name",
+          "whoami-default",
+        ]
       }
 
       resources {
@@ -63,7 +63,6 @@ job "who" {
 
   group "who-disable" {
     network {
-      mode = "bridge"
       port "http" {
         to = 80
       }
@@ -73,9 +72,8 @@ job "who" {
       name     = "whoami2"
       provider = "nomad"
       port     = "http"
-      tags = [
+      tags     = [
         "traefik.enable=false",
-        "traefik.http.routers.example.entrypoints=web",
       ]
     }
 
@@ -84,7 +82,11 @@ job "who" {
 
       config {
         image = "traefik/whoami:v1.8.0"
-        args  = ["-verbose", "-name", "whoami-disabled"]
+        args  = [
+          "-verbose",
+          "-name",
+          "whoami-disabled",
+        ]
       }
 
       resources {
