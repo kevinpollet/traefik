@@ -33,10 +33,17 @@ type NomadSuite struct {
 }
 
 func (ns *NomadSuite) SetUpSuite(c *check.C) {
-	var err error
+	// FIXME
+	// Nomad cannot [usefully] be run in a docker container or as non-root;
+	// instead we run Nomad directly and just make use of it instead of
+	// docker-compose.
+	// if os.Geteuid() != 0 {
+	// 	c.Skip("Skipping Nomad suite, because it requires root privileges")
+	// 	return
+	// }
 
 	// install nomad binary in tmp directory
-	err = ns.install()
+	err := ns.install()
 	c.Check(err, check.IsNil)
 
 	ns.binary = filepath.Join(ns.installDir, "nomad")
