@@ -23,10 +23,12 @@ const (
 
 // Compress is a middleware that allows to compress the response.
 type compress struct {
-	next     http.Handler
-	name     string
-	excludes []string
-	minSize  int
+	next          http.Handler
+	name          string
+	excludes      []string
+	minSize       int
+	brotliHandler http.Handler
+	gzipHandler   http.Handler
 }
 
 // New creates a new compress middleware.
@@ -43,7 +45,22 @@ func New(ctx context.Context, next http.Handler, conf dynamic.Compress, name str
 		excludes = append(excludes, mediaType)
 	}
 
-	return &compress{next: next, name: name, excludes: excludes, minSize: conf.MinResponseBodyBytes}, nil
+	c := &compress{
+		next:     next,
+		name:     name,
+		excludes: excludes,
+		minSize:  conf.MinResponseBodyBytes,
+	}
+
+	c.brotliHandler = c.newBrotliHandler()
+
+	var err error
+	c.gzipHandler, err = c.newGzipHandler()
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }
 
 func (c *compress) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -70,18 +87,18 @@ func (c *compress) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if brotli.AcceptsBr(acceptEncoding) {
-		c.brotliHandler().ServeHTTP(rw, req)
+		c.brotliHandler.ServeHTTP(rw, req)
 		return
 	}
 
-	c.gzipHandler(ctx).ServeHTTP(rw, req)
+	c.gzipHandler.ServeHTTP(rw, req)
 }
 
 func (c *compress) GetTracingInformation() (string, ext.SpanKindEnum) {
 	return c.name, tracing.SpanKindNoneEnum
 }
 
-func (c *compress) gzipHandler(ctx context.Context) http.Handler {
+func (c *compress) newGzipHandler() (http.Handler, error) {
 	minSize := gzhttp.DefaultMinSize
 	if c.minSize > 0 {
 		minSize = c.minSize
@@ -92,13 +109,13 @@ func (c *compress) gzipHandler(ctx context.Context) http.Handler {
 		gzhttp.CompressionLevel(gzip.DefaultCompression),
 		gzhttp.MinSize(minSize))
 	if err != nil {
-		log.FromContext(ctx).Error(err)
+		return nil, err
 	}
 
-	return wrapper(c.next)
+	return wrapper(c.next), nil
 }
 
-func (c *compress) brotliHandler() http.Handler {
+func (c *compress) newBrotliHandler() http.Handler {
 	minSize := brotli.DefaultMinSize
 	if c.minSize > 0 {
 		minSize = c.minSize
