@@ -33,11 +33,11 @@ type brotliResponseWriter struct {
 func (b *brotliResponseWriter) WriteHeader(code int) {
 	fmt.Printf("WriteHeader(%d) headerSent: %t cl: %d\n", code, b.headerSent, b.cl+len(b.buf))
 
-	b.rw.Header().Set("Content-Length", fmt.Sprintf("%d", b.cl+len(b.buf)))
-
 	if b.headerSent {
 		return
 	}
+
+	// b.rw.Header().Set("Content-Length", fmt.Sprintf("%d", b.cl+len(b.buf)))
 
 	b.rw.WriteHeader(code)
 
@@ -93,6 +93,10 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 		b.headerSent = true
 	}
 
+	fmt.Println("Write() first compressed")
+
+	b.rw.WriteHeader(299) // FIXME
+
 	n, err = b.bw.Write(p)
 	b.cl += n
 	return n, err
@@ -103,7 +107,7 @@ func (b *brotliResponseWriter) Header() http.Header {
 }
 
 func (b *brotliResponseWriter) Close() error {
-	fmt.Println("Close()")
+	fmt.Printf("Close() %+v\n", b)
 	if len(b.buf) == 0 {
 		return nil
 	}

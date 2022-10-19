@@ -23,14 +23,13 @@ func generateBytes(length int) []byte {
 
 func TestNewMiddleware(t *testing.T) {
 	defaultMinSize := 10
-	type test struct {
+	testCases := []struct {
 		name          string
 		writeData     []byte
 		writesequence []int
 		expCompress   bool
 		expEncoding   string
-	}
-	testCases := []test{
+	}{
 		{
 			name:        "no data to write",
 			expCompress: false,
@@ -64,19 +63,22 @@ func TestNewMiddleware(t *testing.T) {
 		},
 	}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, test := range testCases {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			// t.Parallel()
+
 			req := testhelpers.MustNewRequest(http.MethodGet, "http://localhost", nil)
 
 			next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 				sentLength := 0
-				for _, length := range testCase.writesequence {
-					_, err := rw.Write(testCase.writeData[sentLength : sentLength+length])
+				for _, length := range test.writesequence {
+					_, err := rw.Write(test.writeData[sentLength : sentLength+length])
 					require.NoError(t, err)
 					sentLength += length
 				}
 
-				_, err := rw.Write(testCase.writeData[sentLength:])
+				_, err := rw.Write(test.writeData[sentLength:])
 				assert.NoError(t, err)
 
 				rw.WriteHeader(299)
@@ -85,13 +87,13 @@ func TestNewMiddleware(t *testing.T) {
 			rw := httptest.NewRecorder()
 			NewMiddleware(Config{MinSize: defaultMinSize})(next).ServeHTTP(rw, req)
 
-			assert.Equal(t, testCase.expEncoding, rw.Header().Get("Content-Encoding"))
+			assert.Equal(t, test.expEncoding, rw.Header().Get("Content-Encoding"))
 			assert.Equal(t, 299, rw.Code, "wrong status code")
-			assert.Equal(t, fmt.Sprintf("%d", len(testCase.writeData)), rw.Header().Get("Content-Length"), "wrong content length")
+			assert.Equal(t, fmt.Sprintf("%d", len(test.writeData)), rw.Header().Get("Content-Length"), "wrong content length")
 
-			if !testCase.expCompress {
+			if !test.expCompress {
 				assert.Equal(t, "", rw.Header().Get("Vary"))
-				assert.Equal(t, testCase.writeData, rw.Body.Bytes())
+				assert.Equal(t, test.writeData, rw.Body.Bytes())
 
 				return
 			}
@@ -102,19 +104,18 @@ func TestNewMiddleware(t *testing.T) {
 			data, err := io.ReadAll(reader)
 			require.NoError(t, err)
 
-			assert.Equal(t, len(testCase.writeData), len(data))
-			assert.Equal(t, testCase.writeData, data)
+			assert.Equal(t, len(test.writeData), len(data))
+			assert.Equal(t, test.writeData, data)
 		})
 	}
 }
 
 func TestAcceptsBr(t *testing.T) {
-	type test struct {
+	testCases := []struct {
 		name     string
 		encoding string
 		accepted bool
-	}
-	testCases := []test{
+	}{
 		{
 			name:     "simple br accept",
 			encoding: "br",
@@ -152,9 +153,12 @@ func TestAcceptsBr(t *testing.T) {
 		},
 	}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			assert.Equal(t, testCase.accepted, AcceptsBr(testCase.encoding))
+	for _, test := range testCases {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, test.accepted, AcceptsBr(test.encoding))
 		})
 	}
 }
