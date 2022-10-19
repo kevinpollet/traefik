@@ -27,33 +27,35 @@ type brotliResponseWriter struct {
 	buf        []byte
 	compressed bool
 	headerSent bool
+	cl         int
 }
 
 func (b *brotliResponseWriter) WriteHeader(code int) {
-	return
-	fmt.Printf("brotliResponseWriter.WriteHeader(%d)\n", code)
+	fmt.Printf("WriteHeader(%d) headerSent: %t cl: %d\n", code, b.headerSent, b.cl+len(b.buf))
+
+	b.rw.Header().Set("Content-Length", fmt.Sprintf("%d", b.cl+len(b.buf)))
+
 	if b.headerSent {
 		return
 	}
+
+	b.rw.WriteHeader(code)
 
 	b.headerSent = true
 
 	if b.compressed {
 		b.rw.Header().Add("Vary", "Accept-Encoding")
 		b.rw.Header().Set("Content-Encoding", "br")
-		b.rw.WriteHeader(code)
 
 		return
 	}
 
 	b.rw.Header().Del("Vary")
 	b.rw.Header().Set("Content-Encoding", "identity")
-	// TODO "Content-Length"
-	b.rw.WriteHeader(code)
 }
 
 func (b *brotliResponseWriter) Write(p []byte) (int, error) {
-	fmt.Printf("brotliResponseWriter.Write(%d) %+v\n", len(p), b)
+	fmt.Printf("Write(%d) %+v\n", len(p), b)
 	if b.compressed {
 		if !b.headerSent {
 			b.rw.Header().Add("Vary", "Accept-Encoding")
@@ -61,17 +63,29 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 			b.headerSent = true
 		}
 
-		fmt.Println("brotliResponseWriter.Write() compressed")
-		return b.bw.Write(p)
+		fmt.Println("Write() compressed")
+		n, err := b.bw.Write(p)
+		b.cl += n
+		return n, err
 	}
 
 	if len(b.buf)+len(p) < b.minSize {
 		b.buf = append(b.buf, p...)
-		fmt.Printf("brotliResponseWriter.Write() buffered %d\n", len(b.buf))
+		fmt.Printf("Write() buffered %d\n", len(b.buf))
 		return len(p), nil
 	}
 
 	b.compressed = true
+
+	b.rw.Header().Del("Content-Length")
+
+	// Ensure to write in the correct order.
+	n, err := b.bw.Write(b.buf)
+	if err != nil {
+		return n, err
+	}
+	b.cl += n
+	b.buf = nil
 
 	if !b.headerSent {
 		b.rw.Header().Add("Vary", "Accept-Encoding")
@@ -79,7 +93,9 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 		b.headerSent = true
 	}
 
-	return b.bw.Write(p)
+	n, err = b.bw.Write(p)
+	b.cl += n
+	return n, err
 }
 
 func (b *brotliResponseWriter) Header() http.Header {
@@ -87,15 +103,23 @@ func (b *brotliResponseWriter) Header() http.Header {
 }
 
 func (b *brotliResponseWriter) Close() error {
-	fmt.Println("brotliResponseWriter.Close()")
+	fmt.Println("Close()")
 	if len(b.buf) == 0 {
 		return nil
 	}
 
+	fmt.Println("Close() flushing")
+
 	if b.compressed {
 		// TODO Check if closer ?
-		_, err := b.bw.Write(b.buf)
-		return err
+		n, err := b.bw.Write(b.buf)
+		if err != nil {
+			return err
+		}
+
+		b.cl += n
+
+		return b.bw.Close()
 	}
 
 	if !b.headerSent {
@@ -104,7 +128,8 @@ func (b *brotliResponseWriter) Close() error {
 		b.headerSent = true
 	}
 
-	_, err := b.rw.Write(b.buf)
+	n, err := b.rw.Write(b.buf)
+	b.cl += n
 	return err
 }
 

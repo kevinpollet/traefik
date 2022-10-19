@@ -1,12 +1,15 @@
 package brotli
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/andybalholm/brotli"
+	abrotli "github.com/andybalholm/brotli"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/traefik/traefik/v2/pkg/testhelpers"
 )
 
@@ -18,80 +21,46 @@ func generateBytes(length int) []byte {
 	return value
 }
 
-func TestBWriter(t *testing.T) {
-	type test struct {
-		name        string
-		minSize     int
-		writeData   []byte
-		compression bool
-	}
-	testCases := []test{
-		{
-			name:        "data less than min - no compression",
-			minSize:     100,
-			writeData:   generateBytes(10),
-			compression: false,
-		},
-		{
-			name:        "data more than min - compression",
-			minSize:     100,
-			writeData:   generateBytes(100),
-			compression: true,
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			trw := httptest.NewRecorder()
-			bw := &bWriter{
-				Writer: brotli.NewWriterOptions(trw, brotli.WriterOptions{
-					Quality: 6,
-				}),
-				rw:      trw,
-				minSize: testCase.minSize,
-			}
-			_, err := bw.Write(testCase.writeData)
-			assert.Nil(t, err)
-
-			if testCase.compression {
-				assert.Less(t, len(trw.Body.Bytes()), len(testCase.writeData))
-			} else {
-				assert.Equal(t, len(testCase.writeData), len(trw.Body.Bytes()))
-			}
-		})
-	}
-
-	trw := httptest.NewRecorder()
-	bw := &bWriter{
-		rw:      trw,
-		minSize: 100,
-	}
-	bw.WriteHeader(http.StatusOK)
-	assert.Equal(t, http.StatusOK, trw.Code)
-
-	trw.Header().Set("traefik", "rocks")
-	assert.Equal(t, "rocks", bw.Header().Get("traefik"))
-}
-
 func TestNewMiddleware(t *testing.T) {
+	defaultMinSize := 10
 	type test struct {
-		name        string
-		writeData   []byte
-		expCompress bool
-		expEncoding string
+		name          string
+		writeData     []byte
+		writesequence []int
+		expCompress   bool
+		expEncoding   string
 	}
 	testCases := []test{
+		{
+			name:        "no data to write",
+			expCompress: false,
+			expEncoding: "identity",
+		},
 		{
 			name:        "big request",
 			expCompress: true,
 			expEncoding: "br",
-			writeData:   generateBytes(DefaultMinSize),
+			writeData:   generateBytes(defaultMinSize),
 		},
 		{
 			name:        "small request",
 			expCompress: false,
 			expEncoding: "identity",
-			writeData:   generateBytes(DefaultMinSize - 1),
+			writeData:   generateBytes(defaultMinSize - 1),
+		},
+		{
+			name:          "big request with first small write",
+			expCompress:   true,
+			expEncoding:   "br",
+			writeData:     generateBytes(defaultMinSize * 10),
+			writesequence: []int{defaultMinSize - 1},
+		},
+		{
+			name:          "big request with first big write",
+			expCompress:   true,
+			expEncoding:   "br",
+			writeData:     generateBytes(defaultMinSize * 10),
+			writesequence: []int{defaultMinSize + 1},
 		},
 	}
 
@@ -100,22 +69,41 @@ func TestNewMiddleware(t *testing.T) {
 			req := testhelpers.MustNewRequest(http.MethodGet, "http://localhost", nil)
 
 			next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-				_, err := rw.Write(testCase.writeData)
+				sentLength := 0
+				for _, length := range testCase.writesequence {
+					_, err := rw.Write(testCase.writeData[sentLength : sentLength+length])
+					require.NoError(t, err)
+					sentLength += length
+				}
+
+				_, err := rw.Write(testCase.writeData[sentLength:])
 				assert.NoError(t, err)
+
+				rw.WriteHeader(299)
 			})
 
 			rw := httptest.NewRecorder()
-			NewMiddleware(Config{MinSize: DefaultMinSize})(next).ServeHTTP(rw, req)
-
-			if testCase.expCompress {
-				assert.Equal(t, "Accept-Encoding", rw.Header().Get("Vary"))
-
-				assert.Less(t, len(rw.Body.Bytes()), len(testCase.writeData), "expected a compressed body got %v", rw.Body.Bytes())
-			} else {
-				assert.Equal(t, testCase.writeData, rw.Body.Bytes())
-			}
+			NewMiddleware(Config{MinSize: defaultMinSize})(next).ServeHTTP(rw, req)
 
 			assert.Equal(t, testCase.expEncoding, rw.Header().Get("Content-Encoding"))
+			assert.Equal(t, 299, rw.Code, "wrong status code")
+			assert.Equal(t, fmt.Sprintf("%d", len(testCase.writeData)), rw.Header().Get("Content-Length"), "wrong content length")
+
+			if !testCase.expCompress {
+				assert.Equal(t, "", rw.Header().Get("Vary"))
+				assert.Equal(t, testCase.writeData, rw.Body.Bytes())
+
+				return
+			}
+
+			assert.Equal(t, "Accept-Encoding", rw.Header().Get("Vary"))
+
+			reader := abrotli.NewReader(rw.Body)
+			data, err := io.ReadAll(reader)
+			require.NoError(t, err)
+
+			assert.Equal(t, len(testCase.writeData), len(data))
+			assert.Equal(t, testCase.writeData, data)
 		})
 	}
 }
