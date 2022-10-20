@@ -37,7 +37,7 @@ func (b *brotliResponseWriter) WriteHeader(code int) {
 		return
 	}
 
-	// b.rw.Header().Set("Content-Length", fmt.Sprintf("%d", b.cl+len(b.buf)))
+	b.rw.Header().Set("Content-Length", fmt.Sprintf("%d", b.cl+len(b.buf)))
 
 	b.rw.WriteHeader(code)
 
