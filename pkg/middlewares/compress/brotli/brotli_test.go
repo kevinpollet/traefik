@@ -1,7 +1,6 @@
 package brotli
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -30,6 +29,8 @@ func TestNewMiddleware(t *testing.T) {
 		expCompress   bool
 		expEncoding   string
 	}{
+
+		// TODO: scenario with no Write at all ?
 		{
 			name:        "no data to write",
 			expCompress: false,
@@ -67,15 +68,13 @@ func TestNewMiddleware(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			// t.Parallel()
-			if test.name != "big request" {
-				return
+			if test.name != "no data to write" {
+				// return
 			}
 
 			req := testhelpers.MustNewRequest(http.MethodGet, "http://localhost", nil)
 
-			var expectedCL int
 			next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-				println("OUATE DE PHOQUE")
 				sentLength := 0
 				for _, length := range test.writesequence {
 					nn, err := rw.Write(test.writeData[sentLength : sentLength+length])
@@ -84,23 +83,24 @@ func TestNewMiddleware(t *testing.T) {
 				}
 
 				var err error
-				expectedCL, err = rw.Write(test.writeData[sentLength:])
+				_, err = rw.Write(test.writeData[sentLength:])
 				assert.NoError(t, err)
-
-				//				rw.WriteHeader(299)
-				rw.WriteHeader(200)
 			})
 
 			rw := httptest.NewRecorder()
 			NewMiddleware(Config{MinSize: defaultMinSize})(next).ServeHTTP(rw, req)
 
 			assert.Equal(t, test.expEncoding, rw.Header().Get("Content-Encoding"))
-			// assert.Equal(t, 299, rw.Code, "wrong status code")
-			assert.Equal(t, fmt.Sprintf("%d", len(test.writeData)), rw.Header().Get("Content-Length"), "wrong content length")
+			// TODO: add parameter: explicit WriteHeader call
+			assert.Equal(t, 200, rw.Code, "wrong status code")
+			// assert.Equal(t, fmt.Sprintf("%d", len(test.writeData)), rw.Header().Get("Content-Length"), "wrong content length")
 
 			if !test.expCompress {
 				assert.Equal(t, "", rw.Header().Get("Vary"))
-				assert.Equal(t, test.writeData, rw.Body.Bytes())
+				assert.Equal(t, len(test.writeData), rw.Body.Len())
+				if test.writeData != nil {
+					assert.Equal(t, test.writeData, rw.Body.Bytes())
+				}
 
 				return
 			}

@@ -31,6 +31,7 @@ type brotliResponseWriter struct {
 	// TODO: maybe remove
 	cl         int
 	statusCode int
+	seendata   bool
 }
 
 func (b *brotliResponseWriter) WriteHeader(code int) {
@@ -63,6 +64,7 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	b.rw.WriteHeader(b.statusCode)
 	b.headerSent = true
 	n, err := b.bw.Write(b.buf)
+	b.seendata = true
 	if err != nil {
 		// TODO: double-check all the scenarii from the caller in case of an error
 		return 0, err
@@ -78,6 +80,7 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	fmt.Println("Write() first compressed")
 
 	n, err = b.bw.Write(p)
+	b.seendata = true
 	b.cl += n
 	return n, err
 }
@@ -89,7 +92,22 @@ func (b *brotliResponseWriter) Header() http.Header {
 func (b *brotliResponseWriter) Close() error {
 	fmt.Printf("Close() %+v\n", b)
 	if len(b.buf) == 0 {
-		return b.bw.Close()
+		// TODO: if headerSent
+		if !b.compressed {
+			b.rw.Header().Del("Vary")
+			// TODO: do not override if it was already set (because previously compressed)
+			// TODO: and it might decide whether we actually compress or not
+			b.rw.Header().Set("Content-Encoding", "identity")
+			b.rw.WriteHeader(b.statusCode)
+			b.headerSent = true
+		}
+
+		// because brotli is seemingly broken, and still, when we Close,
+		// sends "something" even though we never wrote anything
+		if b.seendata {
+			return b.bw.Close()
+		}
+		return nil
 	}
 
 	fmt.Println("Close() flushing")
@@ -139,9 +157,10 @@ func NewMiddleware(cfg Config) func(http.Handler) http.HandlerFunc {
 	return func(h http.Handler) http.HandlerFunc {
 		return func(rw http.ResponseWriter, r *http.Request) {
 			brw := &brotliResponseWriter{
-				rw:      rw,
-				bw:      brotli.NewWriterLevel(rw, cfg.Compression),
-				minSize: cfg.MinSize,
+				rw:         rw,
+				bw:         brotli.NewWriterLevel(rw, cfg.Compression),
+				minSize:    cfg.MinSize,
+				statusCode: http.StatusOK,
 			}
 			defer brw.Close()
 
