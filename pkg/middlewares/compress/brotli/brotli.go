@@ -2,6 +2,7 @@ package brotli
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -27,42 +28,19 @@ type brotliResponseWriter struct {
 	buf        []byte
 	compressed bool
 	headerSent bool
+	// TODO: maybe remove
 	cl         int
+	statusCode int
 }
 
 func (b *brotliResponseWriter) WriteHeader(code int) {
-	fmt.Printf("WriteHeader(%d) headerSent: %t cl: %d\n", code, b.headerSent, b.cl+len(b.buf))
-
-	if b.headerSent {
-		return
-	}
-
-	b.rw.Header().Set("Content-Length", fmt.Sprintf("%d", b.cl+len(b.buf)))
-
-	b.rw.WriteHeader(code)
-
-	b.headerSent = true
-
-	if b.compressed {
-		b.rw.Header().Add("Vary", "Accept-Encoding")
-		b.rw.Header().Set("Content-Encoding", "br")
-
-		return
-	}
-
-	b.rw.Header().Del("Vary")
-	b.rw.Header().Set("Content-Encoding", "identity")
+	b.statusCode = code
 }
 
 func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	fmt.Printf("Write(%d) %+v\n", len(p), b)
 	if b.compressed {
-		if !b.headerSent {
-			b.rw.Header().Add("Vary", "Accept-Encoding")
-			b.rw.Header().Set("Content-Encoding", "br")
-			b.headerSent = true
-		}
-
+		// If compressed we assume we have sent headers already
 		fmt.Println("Write() compressed")
 		n, err := b.bw.Write(p)
 		b.cl += n
@@ -80,22 +58,24 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	b.rw.Header().Del("Content-Length")
 
 	// Ensure to write in the correct order.
+	b.rw.Header().Add("Vary", "Accept-Encoding")
+	b.rw.Header().Set("Content-Encoding", "br")
+	b.rw.WriteHeader(b.statusCode)
+	b.headerSent = true
 	n, err := b.bw.Write(b.buf)
 	if err != nil {
-		return n, err
+		// TODO: double-check all the scenarii from the caller in case of an error
+		return 0, err
 	}
 	b.cl += n
-	b.buf = nil
-
-	if !b.headerSent {
-		b.rw.Header().Add("Vary", "Accept-Encoding")
-		b.rw.Header().Set("Content-Encoding", "br")
-		b.headerSent = true
+	if n < len(b.buf) {
+		b.buf = b.buf[n:]
+		b.buf = append(b.buf, p...)
+		return len(p), nil
 	}
+	b.buf = b.buf[:0]
 
 	fmt.Println("Write() first compressed")
-
-	b.rw.WriteHeader(299) // FIXME
 
 	n, err = b.bw.Write(p)
 	b.cl += n
@@ -109,32 +89,41 @@ func (b *brotliResponseWriter) Header() http.Header {
 func (b *brotliResponseWriter) Close() error {
 	fmt.Printf("Close() %+v\n", b)
 	if len(b.buf) == 0 {
-		return nil
+		return b.bw.Close()
 	}
 
 	fmt.Println("Close() flushing")
 
 	if b.compressed {
-		// TODO Check if closer ?
 		n, err := b.bw.Write(b.buf)
 		if err != nil {
+			b.bw.Close()
 			return err
 		}
-
-		b.cl += n
-
+		if n < len(b.buf) {
+			b.bw.Close()
+			return io.ErrShortWrite
+		}
 		return b.bw.Close()
 	}
 
-	if !b.headerSent {
-		b.rw.Header().Del("Vary")
-		b.rw.Header().Set("Content-Encoding", "identity")
-		b.headerSent = true
-	}
+	b.rw.Header().Del("Vary")
+	// TODO: do not override if it was already set (because previously compressed)
+	// TODO: and it might decide whether we actually compress or not
+	b.rw.Header().Set("Content-Encoding", "identity")
+	b.rw.WriteHeader(b.statusCode)
+	b.headerSent = true
 
 	n, err := b.rw.Write(b.buf)
-	b.cl += n
-	return err
+	if err != nil {
+		b.bw.Close()
+		return err
+	}
+	if n < len(b.buf) {
+		b.bw.Close()
+		return io.ErrShortWrite
+	}
+	return b.bw.Close()
 }
 
 // Config is the brotli middleware configuration.

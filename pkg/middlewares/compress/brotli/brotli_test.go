@@ -87,7 +87,8 @@ func TestNewMiddleware(t *testing.T) {
 				expectedCL, err = rw.Write(test.writeData[sentLength:])
 				assert.NoError(t, err)
 
-				rw.WriteHeader(299)
+				//				rw.WriteHeader(299)
+				rw.WriteHeader(200)
 			})
 
 			rw := httptest.NewRecorder()
@@ -95,8 +96,7 @@ func TestNewMiddleware(t *testing.T) {
 
 			assert.Equal(t, test.expEncoding, rw.Header().Get("Content-Encoding"))
 			// assert.Equal(t, 299, rw.Code, "wrong status code")
-			//			assert.Equal(t, fmt.Sprintf("%d", len(test.writeData)), rw.Header().Get("Content-Length"), "wrong content length")
-			assert.Equal(t, fmt.Sprintf("%d", expectedCL), rw.Header().Get("Content-Length"), "wrong content length")
+			assert.Equal(t, fmt.Sprintf("%d", len(test.writeData)), rw.Header().Get("Content-Length"), "wrong content length")
 
 			if !test.expCompress {
 				assert.Equal(t, "", rw.Header().Get("Vary"))
