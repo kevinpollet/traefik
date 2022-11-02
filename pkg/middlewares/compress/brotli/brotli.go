@@ -22,17 +22,15 @@ var DefaultMinSize = 1024
 
 // TODO Flusher ?
 type brotliResponseWriter struct {
-	rw http.ResponseWriter
-	//	bw         *brotli.Writer
-	bw         io.WriteCloser
+	rw         http.ResponseWriter
+	bw         *brotli.Writer
 	minSize    int
 	buf        []byte
 	compressed bool
+	// headerSent is actually not needed as we could rely on compressed, but we keep
+	// it for clarity
 	headerSent bool
-	// TODO: maybe remove
-	cl         int
 	statusCode int
-	seendata   bool
 }
 
 func (b *brotliResponseWriter) WriteHeader(code int) {
@@ -44,9 +42,7 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	if b.compressed {
 		// If compressed we assume we have sent headers already
 		fmt.Println("Write() compressed")
-		n, err := b.bw.Write(p)
-		b.cl += n
-		return n, err
+		return b.bw.Write(p)
 	}
 
 	if len(b.buf)+len(p) < b.minSize {
@@ -64,13 +60,12 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	b.rw.Header().Set("Content-Encoding", "br")
 	b.rw.WriteHeader(b.statusCode)
 	b.headerSent = true
+
 	n, err := b.bw.Write(b.buf)
-	b.seendata = true
 	if err != nil {
 		// TODO: double-check all the scenarii from the caller in case of an error
 		return 0, err
 	}
-	b.cl += n
 	if n < len(b.buf) {
 		b.buf = b.buf[n:]
 		b.buf = append(b.buf, p...)
@@ -80,10 +75,7 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 
 	fmt.Println("Write() first compressed")
 
-	n, err = b.bw.Write(p)
-	b.seendata = true
-	b.cl += n
-	return n, err
+	return b.bw.Write(p)
 }
 
 func (b *brotliResponseWriter) Header() http.Header {
@@ -93,8 +85,7 @@ func (b *brotliResponseWriter) Header() http.Header {
 func (b *brotliResponseWriter) Close() error {
 	fmt.Printf("Close() %+v\n", b)
 	if len(b.buf) == 0 {
-		// TODO: if headerSent
-		if !b.compressed {
+		if !b.headerSent {
 			b.rw.Header().Del("Vary")
 			// TODO: do not override if it was already set (because previously compressed)
 			// TODO: and it might decide whether we actually compress or not
@@ -105,10 +96,11 @@ func (b *brotliResponseWriter) Close() error {
 
 		// because brotli is seemingly broken, and still, when we Close,
 		// sends "something" even though we never wrote anything
-		if b.seendata {
-			return b.bw.Close()
+		if !b.compressed {
+			return nil
 		}
-		return nil
+
+		return b.bw.Close()
 	}
 
 	fmt.Println("Close() flushing")
@@ -135,14 +127,15 @@ func (b *brotliResponseWriter) Close() error {
 
 	n, err := b.rw.Write(b.buf)
 	if err != nil {
-		b.bw.Close()
+		// b.bw.Close()
 		return err
 	}
 	if n < len(b.buf) {
-		b.bw.Close()
+		// b.bw.Close()
 		return io.ErrShortWrite
 	}
-	return b.bw.Close()
+	return nil
+	// return b.bw.Close()
 }
 
 // Config is the brotli middleware configuration.
@@ -159,7 +152,7 @@ func NewMiddleware(cfg Config) func(http.Handler) http.HandlerFunc {
 		return func(rw http.ResponseWriter, r *http.Request) {
 			brw := &brotliResponseWriter{
 				rw:         rw,
-				bw:         nopCloser{brotli.NewWriterLevel(rw, cfg.Compression)},
+				bw:         brotli.NewWriterLevel(rw, cfg.Compression),
 				minSize:    cfg.MinSize,
 				statusCode: http.StatusOK,
 			}
@@ -169,12 +162,6 @@ func NewMiddleware(cfg Config) func(http.Handler) http.HandlerFunc {
 		}
 	}
 }
-
-type nopCloser struct {
-	io.Writer
-}
-
-func (nopCloser) Close() error { return nil }
 
 // AcceptsBr is a naive method to check whether brotli is an accepted encoding.
 func AcceptsBr(acceptEncoding string) bool {
