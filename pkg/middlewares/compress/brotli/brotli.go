@@ -37,12 +37,19 @@ func (b *brotliResponseWriter) WriteHeader(code int) {
 	b.statusCode = code
 }
 
+// TODO: filter content blabla
+
 func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	fmt.Printf("Write(%d) %+v\n", len(p), b)
 	if b.compressed {
 		// If compressed we assume we have sent headers already
 		fmt.Println("Write() compressed")
 		return b.bw.Write(p)
+	}
+
+	// TODO: add a test
+	if b.rw.Header().Get("Content-Encoding") == "" {
+		return b.rw.Write(p)
 	}
 
 	if len(b.buf)+len(p) < b.minSize {
