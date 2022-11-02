@@ -15,11 +15,12 @@ import (
 func Test_Compress(t *testing.T) {
 	defaultMinSize := 10
 	testCases := []struct {
-		desc        string
-		data        []byte
-		chunkLength int
-		expCompress bool
-		expEncoding string
+		desc            string
+		data            []byte
+		chunkLength     int
+		expCompress     bool
+		expEncoding     string
+		contentEncoding string
 	}{
 
 		// TODO: scenario with no Write at all ?
@@ -32,7 +33,7 @@ func Test_Compress(t *testing.T) {
 			desc:        "big request",
 			expCompress: true,
 			expEncoding: "br",
-			data:        generateBytes(defaultMinSize),
+			data:        generateBytes(defaultMinSize * 10),
 		},
 		{
 			desc:        "small request",
@@ -54,6 +55,14 @@ func Test_Compress(t *testing.T) {
 			data:        generateBytes(defaultMinSize * 10),
 			chunkLength: defaultMinSize + 1,
 		},
+		{
+			desc:            "big request, but backend already encoded",
+			expCompress:     false,
+			expEncoding:     "br",
+			data:            generateBytes(defaultMinSize * 10),
+			contentEncoding: "br",
+		},
+		// TODO: content filter
 	}
 
 	for _, test := range testCases {
@@ -82,6 +91,9 @@ func Test_Compress(t *testing.T) {
 					}
 				}
 
+				if test.contentEncoding != "" {
+					rw.Header().Add("Content-Encoding", "br")
+				}
 				var err error
 				_, err = rw.Write(test.data)
 				assert.NoError(t, err)

@@ -45,7 +45,6 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 		return b.bw.Write(p)
 	}
 
-	// TODO: add a test
 	if b.rw.Header().Get("Content-Encoding") != "" {
 		return b.rw.Write(p)
 	}
