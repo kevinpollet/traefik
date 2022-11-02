@@ -22,8 +22,9 @@ var DefaultMinSize = 1024
 
 // TODO Flusher ?
 type brotliResponseWriter struct {
-	rw         http.ResponseWriter
-	bw         *brotli.Writer
+	rw http.ResponseWriter
+	//	bw         *brotli.Writer
+	bw         io.WriteCloser
 	minSize    int
 	buf        []byte
 	compressed bool
@@ -158,7 +159,7 @@ func NewMiddleware(cfg Config) func(http.Handler) http.HandlerFunc {
 		return func(rw http.ResponseWriter, r *http.Request) {
 			brw := &brotliResponseWriter{
 				rw:         rw,
-				bw:         brotli.NewWriterLevel(rw, cfg.Compression),
+				bw:         nopCloser{brotli.NewWriterLevel(rw, cfg.Compression)},
 				minSize:    cfg.MinSize,
 				statusCode: http.StatusOK,
 			}
@@ -168,6 +169,12 @@ func NewMiddleware(cfg Config) func(http.Handler) http.HandlerFunc {
 		}
 	}
 }
+
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error { return nil }
 
 // AcceptsBr is a naive method to check whether brotli is an accepted encoding.
 func AcceptsBr(acceptEncoding string) bool {

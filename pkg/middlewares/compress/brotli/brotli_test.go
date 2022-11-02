@@ -12,78 +12,78 @@ import (
 	"github.com/traefik/traefik/v2/pkg/testhelpers"
 )
 
-func generateBytes(length int) []byte {
-	var value []byte
-	for i := 0; i < length; i++ {
-		value = append(value, 0x61+byte(i))
-	}
-	return value
-}
-
-func TestNewMiddleware(t *testing.T) {
+func Test_Compress(t *testing.T) {
 	defaultMinSize := 10
 	testCases := []struct {
-		name          string
-		writeData     []byte
-		writesequence []int
-		expCompress   bool
-		expEncoding   string
+		desc        string
+		data        []byte
+		chunkLength int
+		expCompress bool
+		expEncoding string
 	}{
 
 		// TODO: scenario with no Write at all ?
 		{
-			name:        "no data to write",
+			desc:        "no data to write",
 			expCompress: false,
 			expEncoding: "identity",
 		},
 		{
-			name:        "big request",
+			desc:        "big request",
 			expCompress: true,
 			expEncoding: "br",
-			writeData:   generateBytes(defaultMinSize),
+			data:        generateBytes(defaultMinSize),
 		},
 		{
-			name:        "small request",
+			desc:        "small request",
 			expCompress: false,
 			expEncoding: "identity",
-			writeData:   generateBytes(defaultMinSize - 1),
+			data:        generateBytes(defaultMinSize - 1),
 		},
 		{
-			name:          "big request with first small write",
-			expCompress:   true,
-			expEncoding:   "br",
-			writeData:     generateBytes(defaultMinSize * 10),
-			writesequence: []int{defaultMinSize - 1},
+			desc:        "big request with first small write",
+			expCompress: true,
+			expEncoding: "br",
+			data:        generateBytes(defaultMinSize * 10),
+			chunkLength: defaultMinSize - 1,
 		},
 		{
-			name:          "big request with first big write",
-			expCompress:   true,
-			expEncoding:   "br",
-			writeData:     generateBytes(defaultMinSize * 10),
-			writesequence: []int{defaultMinSize + 1},
+			desc:        "big request with first big write",
+			expCompress: true,
+			expEncoding: "br",
+			data:        generateBytes(defaultMinSize * 10),
+			chunkLength: defaultMinSize + 1,
 		},
 	}
 
 	for _, test := range testCases {
 		test := test
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.desc, func(t *testing.T) {
 			// t.Parallel()
-			if test.name != "no data to write" {
+			if test.desc != "no data to write" {
 				// return
 			}
 
 			req := testhelpers.MustNewRequest(http.MethodGet, "http://localhost", nil)
 
 			next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-				sentLength := 0
-				for _, length := range test.writesequence {
-					nn, err := rw.Write(test.writeData[sentLength : sentLength+length])
+				var start, end int
+				for test.chunkLength != 0 {
+					if start+test.chunkLength >= len(test.data) {
+						end = len(test.data)
+					} else {
+						end = start + test.chunkLength
+					}
+					n, err := rw.Write(test.data[start:end])
 					require.NoError(t, err)
-					println("SENT", nn, " VS ", length)
+					start += n
+					if start >= len(test.data) {
+						return
+					}
 				}
 
 				var err error
-				_, err = rw.Write(test.writeData[sentLength:])
+				_, err = rw.Write(test.data)
 				assert.NoError(t, err)
 			})
 
@@ -93,13 +93,13 @@ func TestNewMiddleware(t *testing.T) {
 			assert.Equal(t, test.expEncoding, rw.Header().Get("Content-Encoding"))
 			// TODO: add parameter: explicit WriteHeader call
 			assert.Equal(t, 200, rw.Code, "wrong status code")
-			// assert.Equal(t, fmt.Sprintf("%d", len(test.writeData)), rw.Header().Get("Content-Length"), "wrong content length")
+			// assert.Equal(t, fmt.Sprintf("%d", len(test.data)), rw.Header().Get("Content-Length"), "wrong content length")
 
 			if !test.expCompress {
 				assert.Equal(t, "", rw.Header().Get("Vary"))
-				assert.Equal(t, len(test.writeData), rw.Body.Len())
-				if test.writeData != nil {
-					assert.Equal(t, test.writeData, rw.Body.Bytes())
+				assert.Equal(t, len(test.data), rw.Body.Len())
+				if test.data != nil {
+					assert.Equal(t, test.data, rw.Body.Bytes())
 				}
 
 				return
@@ -111,61 +111,64 @@ func TestNewMiddleware(t *testing.T) {
 			data, err := io.ReadAll(reader)
 			require.NoError(t, err)
 
-			assert.Equal(t, len(test.writeData), len(data))
-			assert.Equal(t, test.writeData, data)
+			assert.Equal(t, len(test.data), len(data))
+			assert.Equal(t, test.data, data)
 		})
 	}
 }
 
-func TestAcceptsBr(t *testing.T) {
+func Test_AcceptsBr(t *testing.T) {
 	testCases := []struct {
-		name     string
-		encoding string
-		accepted bool
+		desc        string
+		reqEncoding string
+		accepted    bool
 	}{
 		{
-			name:     "simple br accept",
-			encoding: "br",
-			accepted: true,
+			desc:        "br requested, br accepted",
+			reqEncoding: "br",
+			accepted:    true,
 		},
 		{
-			name:     "br accept with quality",
-			encoding: "br;q=1.0",
-			accepted: true,
+			desc:        "gzip requested, br not accepted",
+			reqEncoding: "gzip",
+			accepted:    false,
 		},
 		{
-			name:     "br accept with quality multiple",
-			encoding: "gzip;1.0, br;q=0.8",
-			accepted: true,
+			desc:        "any requested, br accepted",
+			reqEncoding: "*",
+			accepted:    true,
 		},
 		{
-			name:     "any accept with quality multiple",
-			encoding: "gzip;q=0.8, *;q=0.1",
-			accepted: true,
+			desc:        "gzip and br requested, br accepted",
+			reqEncoding: "gzip, br",
+			accepted:    true,
 		},
 		{
-			name:     "any accept",
-			encoding: "*",
-			accepted: true,
+			desc:        "gzip and any requested, br accepted",
+			reqEncoding: "gzip, *",
+			accepted:    true,
 		},
 		{
-			name:     "gzip accept",
-			encoding: "gzip",
-			accepted: false,
-		},
-		{
-			name:     "gzip accept multiple",
-			encoding: "gzip, identity",
-			accepted: false,
+			desc:        "gzip and identity requested, br not accepted",
+			reqEncoding: "gzip, identity",
+			accepted:    false,
 		},
 	}
 
 	for _, test := range testCases {
 		test := test
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, test.accepted, AcceptsBr(test.encoding))
+			assert.Equal(t, test.accepted, AcceptsBr(test.reqEncoding))
 		})
 	}
+}
+
+func generateBytes(length int) []byte {
+	var value []byte
+	for i := 0; i < length; i++ {
+		value = append(value, 0x61+byte(i))
+	}
+	return value
 }
