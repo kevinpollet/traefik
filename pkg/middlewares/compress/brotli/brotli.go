@@ -27,8 +27,6 @@ type brotliResponseWriter struct {
 	minSize    int
 	buf        []byte
 	compressed bool
-	// headerSent is actually not needed as we could rely on compressed, but we keep
-	// it for clarity
 	headerSent bool
 	statusCode int
 }
@@ -48,7 +46,7 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	}
 
 	// TODO: add a test
-	if b.rw.Header().Get("Content-Encoding") == "" {
+	if b.rw.Header().Get("Content-Encoding") != "" {
 		return b.rw.Write(p)
 	}
 
@@ -89,20 +87,26 @@ func (b *brotliResponseWriter) Header() http.Header {
 	return b.rw.Header()
 }
 
+func (b *brotliResponseWriter) Flush() {
+
+}
+
 func (b *brotliResponseWriter) Close() error {
 	fmt.Printf("Close() %+v\n", b)
-	if len(b.buf) == 0 {
-		if !b.headerSent {
-			b.rw.Header().Del("Vary")
-			// TODO: do not override if it was already set (because previously compressed)
-			// TODO: and it might decide whether we actually compress or not
-			b.rw.Header().Set("Content-Encoding", "identity")
-			b.rw.WriteHeader(b.statusCode)
-			b.headerSent = true
-		}
 
-		// because brotli is seemingly broken, and still, when we Close,
-		// sends "something" even though we never wrote anything
+	if !b.headerSent {
+		b.rw.Header().Del("Vary")
+		if b.compressed {
+			b.rw.Header().Add("Vary", "Accept-Encoding")
+			b.rw.Header().Set("Content-Encoding", "br")
+		}
+		b.rw.WriteHeader(b.statusCode)
+		b.headerSent = true
+	}
+
+	if len(b.buf) == 0 {
+		// we should only close if we have ever started compressing,
+		// because closing the bw sends some extra end of compressed stream bytes.
 		if !b.compressed {
 			return nil
 		}
@@ -125,24 +129,14 @@ func (b *brotliResponseWriter) Close() error {
 		return b.bw.Close()
 	}
 
-	b.rw.Header().Del("Vary")
-	// TODO: do not override if it was already set (because previously compressed)
-	// TODO: and it might decide whether we actually compress or not
-	b.rw.Header().Set("Content-Encoding", "identity")
-	b.rw.WriteHeader(b.statusCode)
-	b.headerSent = true
-
 	n, err := b.rw.Write(b.buf)
 	if err != nil {
-		// b.bw.Close()
 		return err
 	}
 	if n < len(b.buf) {
-		// b.bw.Close()
 		return io.ErrShortWrite
 	}
 	return nil
-	// return b.bw.Close()
 }
 
 // Config is the brotli middleware configuration.

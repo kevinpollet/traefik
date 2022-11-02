@@ -26,7 +26,7 @@ func Test_Compress(t *testing.T) {
 		{
 			desc:        "no data to write",
 			expCompress: false,
-			expEncoding: "identity",
+			expEncoding: "",
 		},
 		{
 			desc:        "big request",
@@ -37,7 +37,7 @@ func Test_Compress(t *testing.T) {
 		{
 			desc:        "small request",
 			expCompress: false,
-			expEncoding: "identity",
+			expEncoding: "",
 			data:        generateBytes(defaultMinSize - 1),
 		},
 		{
