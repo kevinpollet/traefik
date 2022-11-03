@@ -89,6 +89,8 @@ func (c *compress) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		log.FromContext(ctx).Debug(err)
 	}
 
+	// Notably for text/event-stream requests the response should not be compressed.
+	// See https://github.com/traefik/traefik/issues/2576
 	if contains(c.excludes, mediaType) {
 		c.next.ServeHTTP(rw, req)
 		return
@@ -138,8 +140,9 @@ func (c *compress) newGzipHandler() (http.Handler, error) {
 func (c *compress) newBrotliHandler() http.Handler {
 	return brotli.NewMiddleware(
 		brotli.Config{
-			Compression: abbrotli.DefaultCompression,
-			MinSize:     c.minSize,
+			Compression:          abbrotli.DefaultCompression,
+			ExcludedContentTypes: c.excludes,
+			MinSize:              c.minSize,
 		},
 	)(c.next)
 }
