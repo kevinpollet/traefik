@@ -20,15 +20,24 @@ import (
 // From [github.com/klauspost/compress/gzhttp](https://github.com/klauspost/compress/tree/master/gzhttp).
 var DefaultMinSize = 1024
 
-// TODO Flusher ?
+const contentEncoding = "Content-Encoding"
+
 type brotliResponseWriter struct {
-	rw         http.ResponseWriter
-	bw         *brotli.Writer
-	minSize    int
-	buf        []byte
+	rw http.ResponseWriter
+	bw *brotli.Writer
+
+	statusCode int
+
+	minSize int
+	buf     []byte
+
 	compressed bool
 	headerSent bool
-	statusCode int
+	seenData   bool
+}
+
+func (b *brotliResponseWriter) Header() http.Header {
+	return b.rw.Header()
 }
 
 func (b *brotliResponseWriter) WriteHeader(code int) {
@@ -38,6 +47,8 @@ func (b *brotliResponseWriter) WriteHeader(code int) {
 // TODO: filter content blabla
 
 func (b *brotliResponseWriter) Write(p []byte) (int, error) {
+	b.seenData = len(p) > 0
+
 	fmt.Printf("Write(%d) %+v\n", len(p), b)
 	if b.compressed {
 		// If compressed we assume we have sent headers already
@@ -45,7 +56,7 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 		return b.bw.Write(p)
 	}
 
-	if b.rw.Header().Get("Content-Encoding") != "" {
+	if b.rw.Header().Get(contentEncoding) != "" {
 		return b.rw.Write(p)
 	}
 
@@ -61,7 +72,7 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 
 	// Ensure to write in the correct order.
 	b.rw.Header().Add("Vary", "Accept-Encoding")
-	b.rw.Header().Set("Content-Encoding", "br")
+	b.rw.Header().Set(contentEncoding, "br")
 	b.rw.WriteHeader(b.statusCode)
 	b.headerSent = true
 
@@ -82,12 +93,44 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 	return b.bw.Write(p)
 }
 
-func (b *brotliResponseWriter) Header() http.Header {
-	return b.rw.Header()
-}
-
+// Flush flushes data to the underlying writer.
+// If not enough bytes have been written to determine if we have reached minimum size, this will be ignored.
+// If nothing has been written yet, nothing will be flushed.
 func (b *brotliResponseWriter) Flush() {
+	if !b.seenData {
+		// we should only flush if we have ever started compressing,
+		// because flushing the bw sends some extra end of compressed stream bytes.
+		return
+	}
 
+	if b.rw.Header().Get(contentEncoding) != "" {
+		if rw, ok := b.rw.(http.Flusher); ok {
+			rw.Flush()
+		}
+		return
+	}
+
+	if !b.compressed {
+		return
+	}
+
+	defer func() {
+		b.bw.Flush()
+
+		if rw, ok := b.rw.(http.Flusher); ok {
+			rw.Flush()
+		}
+	}()
+
+	n, err := b.bw.Write(b.buf)
+	if err != nil {
+		return
+	}
+	if n < len(b.buf) {
+		b.buf = b.buf[n:]
+		return
+	}
+	b.buf = b.buf[:0]
 }
 
 func (b *brotliResponseWriter) Close() error {
@@ -97,7 +140,7 @@ func (b *brotliResponseWriter) Close() error {
 		b.rw.Header().Del("Vary")
 		if b.compressed {
 			b.rw.Header().Add("Vary", "Accept-Encoding")
-			b.rw.Header().Set("Content-Encoding", "br")
+			b.rw.Header().Set(contentEncoding, "br")
 		}
 		b.rw.WriteHeader(b.statusCode)
 		b.headerSent = true
