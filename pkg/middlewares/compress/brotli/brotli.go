@@ -214,12 +214,12 @@ func NewMiddleware(cfg Config) func(http.Handler) http.HandlerFunc {
 // AcceptsBr is a naive method to check whether brotli is an accepted encoding.
 func AcceptsBr(acceptEncoding string) bool {
 	for _, v := range strings.Split(acceptEncoding, ",") {
-		for i, e := range strings.Split(strings.TrimSpace(v), ";") {
-			if i == 0 && (e == "br" || e == "*") {
-				return true
-			}
-
-			break
+		encodings := strings.Split(strings.TrimSpace(v), ";")
+		if len(encodings) == 0 {
+			continue
+		}
+		if encodings[0] == "br" || encodings[0] == "*" {
+			return true
 		}
 	}
 
