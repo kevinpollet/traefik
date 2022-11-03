@@ -9,17 +9,6 @@ import (
 	"github.com/andybalholm/brotli"
 )
 
-// DefaultMinSize is te default minimum size until we enable brotli
-// compression.
-// 1500 bytes is the MTU size for the internet since that is the largest size
-// allowed at the network layer. If you take a file that is 1300 bytes and
-// compress it to 800 bytes, it’s still transmitted in that same 1500 byte
-// packet regardless, so you’ve gained nothing. That being the case, you should
-// restrict the gzip compression to files with a size (plus header) greater
-// than a single packet, 1024 bytes (1KB) is therefore default.
-// From [github.com/klauspost/compress/gzhttp](https://github.com/klauspost/compress/tree/master/gzhttp).
-var DefaultMinSize = 1024
-
 const (
 	vary            = "Vary"
 	acceptEncoding  = "Vary"

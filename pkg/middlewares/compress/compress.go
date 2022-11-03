@@ -17,9 +17,18 @@ import (
 	"github.com/traefik/traefik/v2/pkg/tracing"
 )
 
-const (
-	typeName = "Compress"
-)
+const typeName = "Compress"
+
+// DefaultMinSize is te default minimum size until we enable brotli
+// compression.
+// 1500 bytes is the MTU size for the internet since that is the largest size
+// allowed at the network layer. If you take a file that is 1300 bytes and
+// compress it to 800 bytes, it’s still transmitted in that same 1500 byte
+// packet regardless, so you’ve gained nothing. That being the case, you should
+// restrict the gzip compression to files with a size (plus header) greater
+// than a single packet, 1024 bytes (1KB) is therefore default.
+// From [github.com/klauspost/compress/gzhttp](https://github.com/klauspost/compress/tree/master/gzhttp).
+const DefaultMinSize = 1024
 
 // Compress is a middleware that allows to compress the response.
 type compress struct {
@@ -45,11 +54,16 @@ func New(ctx context.Context, next http.Handler, conf dynamic.Compress, name str
 		excludes = append(excludes, mediaType)
 	}
 
+	minSize := DefaultMinSize
+	if conf.MinResponseBodyBytes > 0 {
+		minSize = conf.MinResponseBodyBytes
+	}
+
 	c := &compress{
 		next:     next,
 		name:     name,
 		excludes: excludes,
-		minSize:  conf.MinResponseBodyBytes,
+		minSize:  minSize,
 	}
 
 	c.brotliHandler = c.newBrotliHandler()
@@ -99,15 +113,10 @@ func (c *compress) GetTracingInformation() (string, ext.SpanKindEnum) {
 }
 
 func (c *compress) newGzipHandler() (http.Handler, error) {
-	minSize := gzhttp.DefaultMinSize
-	if c.minSize > 0 {
-		minSize = c.minSize
-	}
-
 	wrapper, err := gzhttp.NewWrapper(
 		gzhttp.ExceptContentTypes(c.excludes),
 		gzhttp.CompressionLevel(gzip.DefaultCompression),
-		gzhttp.MinSize(minSize))
+		gzhttp.MinSize(c.minSize))
 	if err != nil {
 		return nil, err
 	}
@@ -116,15 +125,10 @@ func (c *compress) newGzipHandler() (http.Handler, error) {
 }
 
 func (c *compress) newBrotliHandler() http.Handler {
-	minSize := brotli.DefaultMinSize
-	if c.minSize > 0 {
-		minSize = c.minSize
-	}
-
 	return brotli.NewMiddleware(
 		brotli.Config{
 			Compression: abbrotli.DefaultCompression,
-			MinSize:     minSize,
+			MinSize:     c.minSize,
 		},
 	)(c.next)
 }
