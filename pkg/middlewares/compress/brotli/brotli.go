@@ -42,7 +42,9 @@ func (b *brotliResponseWriter) WriteHeader(code int) {
 }
 
 func (b *brotliResponseWriter) Write(p []byte) (int, error) {
-	b.seenData = len(p) > 0
+	if !b.seenData && len(p) > 0 {
+		b.seenData = true
+	}
 
 	if b.skipCompression {
 		return b.rw.Write(p)
@@ -111,17 +113,47 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 // If not enough bytes have been written to determine if we have reached minimum size, this will be ignored.
 // If nothing has been written yet, nothing will be flushed.
 func (b *brotliResponseWriter) Flush() {
+	if !b.headersSent {
+		b.rw.WriteHeader(b.statusCode)
+		b.headersSent = true
+	}
+
 	if !b.seenData {
 		// we should only flush if we have ever started compressing,
 		// because flushing the bw sends some extra end of compressionStarted stream bytes.
 		return
 	}
 
-	if b.rw.Header().Get(contentEncoding) != "" {
+	if b.skipCompression {
 		if rw, ok := b.rw.(http.Flusher); ok {
 			rw.Flush()
 		}
 		return
+	}
+
+	if b.rw.Header().Get(contentEncoding) != "" {
+		b.skipCompression = true
+		if rw, ok := b.rw.(http.Flusher); ok {
+			rw.Flush()
+		}
+		return
+	}
+
+	if ct := b.rw.Header().Get(contentType); ct != "" {
+		mediaType, params, err := mime.ParseMediaType(ct)
+		if err != nil {
+			return
+		}
+
+		for _, excludedContentType := range b.excludedContentTypes {
+			if excludedContentType.equals(mediaType, params) {
+				b.skipCompression = true
+				if rw, ok := b.rw.(http.Flusher); ok {
+					rw.Flush()
+				}
+				return
+			}
+		}
 	}
 
 	if !b.compressionStarted {
@@ -151,11 +183,6 @@ func (b *brotliResponseWriter) Close() error {
 	fmt.Printf("Close() %+v\n", b)
 
 	if !b.headersSent {
-		b.rw.Header().Del(vary)
-		if b.compressionStarted {
-			b.rw.Header().Add(vary, acceptEncoding)
-			b.rw.Header().Set(contentEncoding, "br")
-		}
 		b.rw.WriteHeader(b.statusCode)
 		b.headersSent = true
 	}
