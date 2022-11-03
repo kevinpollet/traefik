@@ -5,7 +5,6 @@ import (
 	"context"
 	"mime"
 	"net/http"
-	"strings"
 
 	abbrotli "github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/gzhttp"
@@ -78,12 +77,13 @@ func New(ctx context.Context, next http.Handler, conf dynamic.Compress, name str
 }
 
 func (c *compress) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	ctx := middlewares.GetLoggerCtx(req.Context(), c.name, typeName)
+
 	if req.Method == http.MethodHead {
 		c.next.ServeHTTP(rw, req)
 		return
 	}
 
-	ctx := middlewares.GetLoggerCtx(req.Context(), c.name, typeName)
 	mediaType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
 	if err != nil {
 		log.FromContext(ctx).Debug(err)
@@ -94,8 +94,18 @@ func (c *compress) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	acceptEncoding := strings.TrimSpace(req.Header.Get("Accept-Encoding"))
-	if acceptEncoding == "" {
+	// FIXME: add comment -> pas de accept encoding -> on fait ce qu'on veut
+	// FIXME: add comment -> accept-encoding vide/identity -> pas compresser
+
+	// See https://www.rfc-editor.org/rfc/rfc9110.html#section-12.5.3
+	if _, ok := req.Header["Accept-Encoding"]; !ok {
+		c.brotliHandler.ServeHTTP(rw, req)
+		return
+	}
+
+	// FIXME: add comment
+	acceptEncoding := req.Header.Get("Accept-Encoding")
+	if acceptEncoding == "" || acceptEncoding == "identity" {
 		c.next.ServeHTTP(rw, req)
 		return
 	}
@@ -105,6 +115,7 @@ func (c *compress) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// FIXME: add comment -> client demande autre chose que br ou gzip
 	c.gzipHandler.ServeHTTP(rw, req)
 }
 
