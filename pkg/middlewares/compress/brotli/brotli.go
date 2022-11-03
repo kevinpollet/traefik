@@ -20,7 +20,12 @@ import (
 // From [github.com/klauspost/compress/gzhttp](https://github.com/klauspost/compress/tree/master/gzhttp).
 var DefaultMinSize = 1024
 
-const contentEncoding = "Content-Encoding"
+const (
+	vary            = "Vary"
+	acceptEncoding  = "Vary"
+	contentEncoding = "Content-Encoding"
+	contentLength   = "Content-Length"
+)
 
 type brotliResponseWriter struct {
 	rw http.ResponseWriter
@@ -68,10 +73,10 @@ func (b *brotliResponseWriter) Write(p []byte) (int, error) {
 
 	b.compressed = true
 
-	b.rw.Header().Del("Content-Length")
+	b.rw.Header().Del(contentLength)
 
 	// Ensure to write in the correct order.
-	b.rw.Header().Add("Vary", "Accept-Encoding")
+	b.rw.Header().Add(vary, acceptEncoding)
 	b.rw.Header().Set(contentEncoding, "br")
 	b.rw.WriteHeader(b.statusCode)
 	b.headerSent = true
@@ -137,9 +142,9 @@ func (b *brotliResponseWriter) Close() error {
 	fmt.Printf("Close() %+v\n", b)
 
 	if !b.headerSent {
-		b.rw.Header().Del("Vary")
+		b.rw.Header().Del(vary)
 		if b.compressed {
-			b.rw.Header().Add("Vary", "Accept-Encoding")
+			b.rw.Header().Add(vary, acceptEncoding)
 			b.rw.Header().Set(contentEncoding, "br")
 		}
 		b.rw.WriteHeader(b.statusCode)
