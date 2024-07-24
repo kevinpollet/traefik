@@ -194,10 +194,11 @@ func (s *K8sConformanceSuite) TestK8sGatewayAPIConformance() {
 			Version:      version.Version,
 			Contact:      []string{"@traefik/maintainers"},
 		},
-		ConformanceProfiles: sets.New(ksuite.GatewayHTTPConformanceProfileName),
+		ConformanceProfiles: sets.New(ksuite.GatewayHTTPConformanceProfileName, ksuite.GatewayGRPCConformanceProfileName),
 		SupportedFeatures: sets.New(
 			features.SupportGateway,
 			features.SupportGatewayPort8080,
+			features.SupportGRPCRoute,
 			features.SupportHTTPRoute,
 			features.SupportHTTPRouteQueryParamMatching,
 			features.SupportHTTPRouteMethodMatching,
@@ -211,6 +212,8 @@ func (s *K8sConformanceSuite) TestK8sGatewayAPIConformance() {
 	require.NoError(s.T(), err)
 
 	cSuite.Setup(s.T(), tests.ConformanceTests)
+
+	cSuite.RunTest = tests.GRPCRouteHeaderMatching.ShortName
 
 	err = cSuite.Run(s.T(), tests.ConformanceTests)
 	require.NoError(s.T(), err)

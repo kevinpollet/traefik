@@ -267,7 +267,7 @@ func (p *Provider) loadHTTPService(route *gatev1.HTTPRoute, backendRef gatev1.HT
 	portStr := strconv.FormatInt(int64(port), 10)
 	serviceName = provider.Normalize(serviceName + "-" + portStr)
 
-	lb, err := p.loadHTTPServers(namespace, backendRef)
+	lb, err := p.loadHTTPServers(namespace, backendRef.BackendRef)
 	if err != nil {
 		return serviceName, nil, &metav1.Condition{
 			Type:               string(gatev1.RouteConditionResolvedRefs),
@@ -369,7 +369,7 @@ func (p *Provider) loadHTTPRouteFilterExtensionRef(namespace string, extensionRe
 	return filterFunc(string(extensionRef.Name), namespace)
 }
 
-func (p *Provider) loadHTTPServers(namespace string, backendRef gatev1.HTTPBackendRef) (*dynamic.ServersLoadBalancer, error) {
+func (p *Provider) loadHTTPServers(namespace string, backendRef gatev1.BackendRef) (*dynamic.ServersLoadBalancer, error) {
 	if backendRef.Port == nil {
 		return nil, errors.New("port is required for Kubernetes Service reference")
 	}
