@@ -129,12 +129,18 @@ func (p *Provider) loadGRPCRoute(ctx context.Context, listener gatewayListener, 
 		// Adding the gateway desc and the entryPoint desc prevents overlapping of routers build from the same routes.
 		routeKey := provider.Normalize(fmt.Sprintf("%s-%s-%s-%s-%d", route.Namespace, route.Name, listener.GWName, listener.EPName, ri))
 
-		for _, match := range routeRule.Matches {
-			rule := buildGRPCMatchRule(hostnames, match)
+		matches := routeRule.Matches
+		if len(matches) == 0 {
+			matches = []gatev1.GRPCRouteMatch{{}}
+		}
+
+		for _, match := range matches {
+			rule, priority := buildGRPCMatchRule(hostnames, match)
 
 			router := dynamic.Router{
 				RuleSyntax:  "v3",
 				Rule:        rule,
+				Priority:    priority,
 				EntryPoints: []string{listener.EPName},
 			}
 			if listener.Protocol == gatev1.HTTPSProtocolType {
@@ -381,7 +387,7 @@ func (p *Provider) loadGRPCServers(namespace string, backendRef gatev1.BackendRe
 
 // FIXME rename
 // FIXME conflict with HTTPRoute if hostname intersection
-func buildGRPCMatchRule(hostnames []gatev1.Hostname, match gatev1.GRPCRouteMatch) string {
+func buildGRPCMatchRule(hostnames []gatev1.Hostname, match gatev1.GRPCRouteMatch) (string, int) {
 	var matchRules []string
 
 	methodRule, err := buildGRPCMethodRule(match.Method)
@@ -395,11 +401,11 @@ func buildGRPCMatchRule(hostnames []gatev1.Hostname, match gatev1.GRPCRouteMatch
 
 	matchRulesStr := strings.Join(matchRules, " && ")
 
-	hostRule, _ := buildHostRule(hostnames)
+	hostRule, priority := buildHostRule(hostnames)
 	if hostRule == "" {
-		return matchRulesStr
+		return matchRulesStr, len(matchRulesStr)
 	}
-	return hostRule + " && " + matchRulesStr
+	return hostRule + " && " + matchRulesStr, priority + len(matchRulesStr)
 }
 
 //			pathValue = "/" + *gm.Method.Service + "/" + *gm.Method.Method

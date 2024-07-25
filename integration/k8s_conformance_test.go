@@ -213,8 +213,6 @@ func (s *K8sConformanceSuite) TestK8sGatewayAPIConformance() {
 
 	cSuite.Setup(s.T(), tests.ConformanceTests)
 
-	cSuite.RunTest = tests.GRPCRouteHeaderMatching.ShortName
-
 	err = cSuite.Run(s.T(), tests.ConformanceTests)
 	require.NoError(s.T(), err)
 
