@@ -151,7 +151,6 @@ func (p *Provider) SetRouterTransform(routerTransform k8s.RouterTransform) {
 	p.routerTransform = routerTransform
 }
 
-// FIXME this does not work with GRPCRoute
 func (p *Provider) applyRouterTransform(ctx context.Context, rt *dynamic.Router, route *gatev1.HTTPRoute) {
 	if p.routerTransform == nil {
 		return
@@ -869,7 +868,7 @@ func supportedRouteKinds(protocol gatev1.ProtocolType, experimentalChannel bool)
 	case gatev1.HTTPProtocolType, gatev1.HTTPSProtocolType:
 		return []gatev1.RouteGroupKind{
 			{Kind: kindHTTPRoute, Group: &group},
-			{Kind: kindGRPCRoute, Group: &group}, // FIXME: only this protocol?
+			{Kind: kindGRPCRoute, Group: &group},
 		}, nil
 
 	case gatev1.TLSProtocolType:

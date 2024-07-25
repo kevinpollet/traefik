@@ -18,6 +18,7 @@ import (
 	gatev1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
+// TODO: conflict with HTTPRoute https://github.com/kubernetes-sigs/gateway-api/blob/95cc90dbbdc8eac81cf0b2630ab01697e513d44d/apis/v1/grpcroute_types.go#L123
 func (p *Provider) loadGRPCRoutes(ctx context.Context, gatewayListeners []gatewayListener, conf *dynamic.Configuration) {
 	routes, err := p.client.ListGRPCRoutes()
 	if err != nil {
@@ -114,17 +115,6 @@ func (p *Provider) loadGRPCRoute(ctx context.Context, listener gatewayListener, 
 		Reason:             string(gatev1.RouteConditionResolvedRefs),
 	}
 
-	// FIXME KEep it?
-	errWrr := dynamic.WeightedRoundRobin{
-		Services: []dynamic.WRRService{
-			{
-				Name:   "invalid-httproute-filter",
-				Status: ptr.To(500),
-				Weight: ptr.To(1),
-			},
-		},
-	}
-
 	for ri, routeRule := range route.Spec.Rules {
 		// Adding the gateway desc and the entryPoint desc prevents overlapping of routers build from the same routes.
 		routeKey := provider.Normalize(fmt.Sprintf("%s-%s-%s-%s-%d", route.Namespace, route.Name, listener.GWName, listener.EPName, ri))
@@ -154,9 +144,17 @@ func (p *Provider) loadGRPCRoute(ctx context.Context, listener gatewayListener, 
 			case err != nil:
 				log.Ctx(ctx).Error().Err(err).Msg("Unable to load GRPC route filters")
 
-				// FIXME return a 500 here?
+				// TODO: return a GRPC status UNAVAILABLE (14), when injecting a custom gRPC service will be possible.
 				errWrrName := routerName + "-err-wrr"
-				conf.HTTP.Services[errWrrName] = &dynamic.Service{Weighted: &errWrr}
+				conf.HTTP.Services[errWrrName] = &dynamic.Service{Weighted: &dynamic.WeightedRoundRobin{
+					Services: []dynamic.WRRService{
+						{
+							Name:   "invalid-grpcroute-filter",
+							Status: ptr.To(500),
+							Weight: ptr.To(1),
+						},
+					},
+				}}
 				router.Service = errWrrName
 
 			default:
@@ -174,7 +172,6 @@ func (p *Provider) loadGRPCRoute(ctx context.Context, listener gatewayListener, 
 	return conf, condition
 }
 
-// FIXME do not support internal services
 func (p *Provider) loadGRPCService(conf *dynamic.Configuration, routeKey string, routeRule gatev1.GRPCRouteRule, route *gatev1.GRPCRoute) (string, *metav1.Condition) {
 	name := routeKey + "-wrr"
 	if _, ok := conf.HTTP.Services[name]; ok {
@@ -188,6 +185,7 @@ func (p *Provider) loadGRPCService(conf *dynamic.Configuration, routeKey string,
 		weight := ptr.To(int(ptr.Deref(backendRef.Weight, 1)))
 		if errCondition != nil {
 			condition = errCondition
+			// TODO: return a GRPC status UNAVAILABLE (14), when injecting a custom gRPC service will be possible.
 			wrr.Services = append(wrr.Services, dynamic.WRRService{
 				Name:   svcName,
 				Status: ptr.To(500),
@@ -227,17 +225,6 @@ func (p *Provider) loadGRPCBackendRef(route *gatev1.GRPCRoute, backendRef gatev1
 
 	serviceName := provider.Normalize(namespace + "-" + string(backendRef.Name))
 
-	if err := p.isReferenceGranted(groupGateway, kindGRPCRoute, route.Namespace, group, string(kind), string(backendRef.Name), namespace); err != nil {
-		return serviceName, nil, &metav1.Condition{
-			Type:               string(gatev1.RouteConditionResolvedRefs),
-			Status:             metav1.ConditionFalse,
-			ObservedGeneration: route.Generation,
-			LastTransitionTime: metav1.Now(),
-			Reason:             string(gatev1.RouteReasonRefNotPermitted),
-			Message:            fmt.Sprintf("Cannot load GRPCBackendRef %s/%s/%s/%s: %s", group, kind, namespace, backendRef.Name, err),
-		}
-	}
-
 	if group != groupCore || kind != "Service" {
 		return serviceName, nil, &metav1.Condition{
 			Type:               string(gatev1.RouteConditionResolvedRefs),
@@ -246,6 +233,17 @@ func (p *Provider) loadGRPCBackendRef(route *gatev1.GRPCRoute, backendRef gatev1
 			LastTransitionTime: metav1.Now(),
 			Reason:             string(gatev1.RouteReasonInvalidKind),
 			Message:            fmt.Sprintf("Cannot load GRPCBackendRef %s/%s/%s/%s: only Kubernetes services are supported", group, kind, namespace, backendRef.Name),
+		}
+	}
+
+	if err := p.isReferenceGranted(groupGateway, kindGRPCRoute, route.Namespace, group, string(kind), string(backendRef.Name), namespace); err != nil {
+		return serviceName, nil, &metav1.Condition{
+			Type:               string(gatev1.RouteConditionResolvedRefs),
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: route.Generation,
+			LastTransitionTime: metav1.Now(),
+			Reason:             string(gatev1.RouteReasonRefNotPermitted),
+			Message:            fmt.Sprintf("Cannot load GRPCBackendRef %s/%s/%s/%s: %s", group, kind, namespace, backendRef.Name, err),
 		}
 	}
 
@@ -385,15 +383,10 @@ func (p *Provider) loadGRPCServers(namespace string, backendRef gatev1.BackendRe
 	return lb, nil
 }
 
-// FIXME rename
-// FIXME conflict with HTTPRoute if hostname intersection
 func buildGRPCMatchRule(hostnames []gatev1.Hostname, match gatev1.GRPCRouteMatch) (string, int) {
 	var matchRules []string
 
-	methodRule, err := buildGRPCMethodRule(match.Method)
-	if err != nil {
-		// FIXME error handling
-	}
+	methodRule := buildGRPCMethodRule(match.Method)
 	matchRules = append(matchRules, methodRule)
 
 	headerRules := buildGRPCHeaderRules(match.Headers)
@@ -408,31 +401,30 @@ func buildGRPCMatchRule(hostnames []gatev1.Hostname, match gatev1.GRPCRouteMatch
 	return hostRule + " && " + matchRulesStr, priority + len(matchRulesStr)
 }
 
-//			pathValue = "/" + *gm.Method.Service + "/" + *gm.Method.Method
-//			pathType = v1.PathMatchType("Exact")
-
-// FIXME comment on pathtype matching
-func buildGRPCMethodRule(method *gatev1.GRPCMethodMatch) (string, error) {
+func buildGRPCMethodRule(method *gatev1.GRPCMethodMatch) string {
+	catchAll := "PathPrefix(`/`)"
 	if method == nil {
-		return "PathPrefix(`/`)", nil
+		return catchAll
 	}
 
-	typ := ptr.Deref(method.Type, gatev1.GRPCMethodMatchExact)
-	if typ != gatev1.GRPCMethodMatchExact {
-		return "", fmt.Errorf("unsupported GRPC method match type: %s", method.Type)
+	s := ptr.Deref(method.Service, "")
+	m := ptr.Deref(method.Method, "")
+
+	if s == "" && m == "" {
+		return catchAll
 	}
 
 	sExpr := "[^/]+"
-	if s := ptr.Deref(method.Service, ""); s != "" {
+	if s != "" {
 		sExpr = s
 	}
 
 	mExpr := "[^/]+"
-	if m := ptr.Deref(method.Method, ""); m != "" {
+	if m != "" {
 		mExpr = m
 	}
 
-	return fmt.Sprintf("PathRegexp(`/%s/%s`)", sExpr, mExpr), nil
+	return fmt.Sprintf("PathRegexp(`/%s/%s`)", sExpr, mExpr)
 }
 
 func buildGRPCHeaderRules(headers []gatev1.GRPCHeaderMatch) []string {
