@@ -41,7 +41,7 @@ require (
 	github.com/kvtools/valkeyrie v1.0.0
 	github.com/kvtools/zookeeper v1.0.2
 	github.com/mailgun/ttlmap v0.0.0-20170619185759-c1c17f74874f // No tag on the repo.
-	github.com/miekg/dns v1.1.59
+	github.com/miekg/dns v1.1.62
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/mitchellh/hashstructure v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
@@ -84,12 +84,12 @@ require (
 	go.opentelemetry.io/otel/trace v1.28.0
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // No tag on the repo.
 	golang.org/x/mod v0.18.0
-	golang.org/x/net v0.26.0
+	golang.org/x/net v0.28.0
 	golang.org/x/sys v0.23.0
 	golang.org/x/text v0.17.0
 	golang.org/x/time v0.5.0
 	golang.org/x/tools v0.22.0
-	google.golang.org/grpc v1.64.1
+	google.golang.org/grpc v1.66.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.30.0
@@ -99,7 +99,7 @@ require (
 	k8s.io/utils v0.0.0-20240423183400-0849a56e8f22 // No tag on the repo.
 	mvdan.cc/xurls/v2 v2.5.0
 	sigs.k8s.io/controller-runtime v0.18.0
-	sigs.k8s.io/gateway-api v1.1.0
+	sigs.k8s.io/gateway-api v1.1.1-0.20240911154511-529991952f4c
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -154,7 +154,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/bytedance/sonic v1.10.0 // indirect
-	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/civo/civogo v0.3.11 // indirect
 	github.com/cloudflare/cloudflare-go v0.97.0 // indirect
 	github.com/containerd/containerd v1.7.20 // indirect
