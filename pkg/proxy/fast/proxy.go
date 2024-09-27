@@ -57,15 +57,6 @@ func (p *pool[T]) Put(x T) {
 	p.pool.Put(x)
 }
 
-type buffConn struct {
-	*bufio.Reader
-	net.Conn
-}
-
-func (b buffConn) Read(p []byte) (int, error) {
-	return b.Reader.Read(p)
-}
-
 type writeDetector struct {
 	net.Conn
 
@@ -113,7 +104,6 @@ type ReverseProxy struct {
 	connPool *connPool
 
 	bufferPool      pool[[]byte]
-	readerPool      pool[*bufio.Reader]
 	writerPool      pool[*bufio.Writer]
 	limitReaderPool pool[*io.LimitedReader]
 
@@ -256,7 +246,6 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-
 		default:
 		}
 
@@ -286,14 +275,6 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 		}
 	}
 
-	br := p.readerPool.Get()
-	if br == nil {
-		br = bufio.NewReaderSize(co, bufioSize)
-	}
-	defer p.readerPool.Put(br)
-
-	br.Reset(co)
-
 	res := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(res)
 
@@ -310,7 +291,7 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 		}
 
 		res.Header.SetNoDefaultContentType(true)
-		if err := res.Header.Read(br); err != nil {
+		if err := res.Header.Read(co.br); err != nil {
 			if p.responseHeaderTimeout > 0 {
 				if errT := errTimeout.Load(); errT != nil {
 					return errT
@@ -362,7 +343,7 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 	// Deal with 101 Switching Protocols responses: (WebSocket, h2c, etc)
 	if res.StatusCode() == http.StatusSwitchingProtocols {
 		// As the connection has been hijacked, it cannot be added back to the pool.
-		handleUpgradeResponse(rw, req, reqUpType, res, buffConn{Conn: co, Reader: br})
+		handleUpgradeResponse(rw, req, reqUpType, res, co)
 		return nil
 	}
 
@@ -382,9 +363,14 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 
 	rw.WriteHeader(res.StatusCode())
 
-	// Chunked response, Content-Length is set to -1 by FastProxy when "Transfer-Encoding: chunked" header is received.
+	if !isBodyAllowedForStatus(res.StatusCode()) {
+		p.connPool.ReleaseConn(co)
+		return nil
+	}
+
+	// Chunked response, Content-Length is set to -1 by FastHTTP when "Transfer-Encoding: chunked" header is received.
 	if res.Header.ContentLength() == -1 {
-		cbr := httputil.NewChunkedReader(br)
+		cbr := httputil.NewChunkedReader(co.br)
 
 		b := p.bufferPool.Get()
 		if b == nil {
@@ -399,7 +385,7 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 
 		res.Header.Reset()
 		res.Header.SetNoDefaultContentType(true)
-		if err := res.Header.ReadTrailer(br); err != nil {
+		if err := res.Header.ReadTrailer(co.br); err != nil {
 			co.Close()
 			return err
 		}
@@ -423,7 +409,6 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 		}
 
 		p.connPool.ReleaseConn(co)
-
 		return nil
 	}
 
@@ -433,7 +418,7 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 	}
 	defer p.limitReaderPool.Put(brl)
 
-	brl.R = br
+	brl.R = co.br
 	brl.N = int64(res.Header.ContentLength())
 
 	b := p.bufferPool.Get()
@@ -448,7 +433,6 @@ func (p *ReverseProxy) roundTrip(rw http.ResponseWriter, req *http.Request, outR
 	}
 
 	p.connPool.ReleaseConn(co)
-
 	return nil
 }
 
@@ -500,6 +484,21 @@ func isGraphic(s string) bool {
 		}
 	}
 
+	return true
+}
+
+// isBodyAllowedForStatus reports whether a given response status code
+// permits a body. See RFC 7230, section 3.3.
+// From https://github.com/golang/go/blame/master/src/net/http/transfer.go#L459
+func isBodyAllowedForStatus(status int) bool {
+	switch {
+	case status >= 100 && status <= 199:
+		return false
+	case status == 204:
+		return false
+	case status == 304:
+		return false
+	}
 	return true
 }
 

@@ -1,8 +1,10 @@
 package fast
 
 import (
+	"bufio"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -12,13 +14,74 @@ import (
 type conn struct {
 	net.Conn
 
+	br *bufio.Reader
+
 	idleAt      time.Time // the last time it was marked as idle.
+	idleCh      chan struct{}
 	idleTimeout time.Duration
+
+	activeCh chan struct{}
+
+	broken   bool
+	brokenMu sync.RWMutex
+}
+
+func (c *conn) Read(p []byte) (int, error) {
+	return c.br.Read(p)
 }
 
 func (c *conn) isExpired() bool {
 	expTime := c.idleAt.Add(c.idleTimeout)
 	return c.idleTimeout > 0 && time.Now().After(expTime)
+}
+
+func (c *conn) isBroken() bool {
+	c.brokenMu.RLock()
+	defer c.brokenMu.RUnlock()
+	return c.broken
+}
+
+func (c *conn) markAsActive() {
+	select {
+	case c.activeCh <- struct{}{}:
+	default:
+		// Nothing to do the connection is already marked as active.
+	}
+}
+
+func (c *conn) markAsIdle() {
+	select {
+	case c.idleCh <- struct{}{}:
+		c.idleAt = time.Now()
+
+	default:
+		// Nothing to do the connection is already marked as idle.
+	}
+}
+
+func (c *conn) readLoop() {
+	for {
+		select {
+		case <-c.activeCh:
+		case <-c.idleCh:
+			if _, err := c.br.Peek(1); err != nil {
+				c.brokenMu.Lock()
+				c.broken = true
+				c.brokenMu.Unlock()
+			}
+
+			// Pick returned because the connection is now active
+			// or some bytes are still available in the pipe which
+			// means that the connection is broken.
+			select {
+			case <-c.activeCh:
+			default:
+				c.brokenMu.Lock()
+				c.broken = true
+				c.brokenMu.Unlock()
+			}
+		}
+	}
 }
 
 // connPool is a net.Conn pool implementation using channels.
@@ -28,6 +91,7 @@ type connPool struct {
 	idleConnTimeout time.Duration
 	ticker          *time.Ticker
 	doneCh          chan struct{}
+	readerPool      pool[*bufio.Reader]
 }
 
 // newConnPool creates a new connPool.
@@ -56,7 +120,7 @@ func newConnPool(maxIdleConn int, idleConnTimeout time.Duration, dialer func() (
 	return c
 }
 
-// Close closes stop the cleanIdleConn goroutine.
+// Close closes stop the cleanIdleConns goroutine.
 func (c *connPool) Close() {
 	if c.idleConnTimeout > 0 {
 		close(c.doneCh)
@@ -72,11 +136,12 @@ func (c *connPool) AcquireConn() (*conn, error) {
 			return nil, err
 		}
 
-		if !co.isExpired() {
+		if !co.isExpired() && !co.isBroken() {
+			co.markAsActive()
 			return co, nil
 		}
 
-		// As the acquired conn is expired we can close it
+		// As the acquired conn is expired or closed we can close it
 		// without putting it again into the pool.
 		if err := co.Close(); err != nil {
 			log.Debug().
@@ -88,7 +153,7 @@ func (c *connPool) AcquireConn() (*conn, error) {
 
 // ReleaseConn releases the given net.Conn to the pool.
 func (c *connPool) ReleaseConn(co *conn) {
-	co.idleAt = time.Now()
+	co.markAsIdle()
 	c.releaseConn(co)
 }
 
@@ -97,7 +162,7 @@ func (c *connPool) cleanIdleConns() {
 	for {
 		select {
 		case co := <-c.idleConns:
-			if !co.isExpired() {
+			if !co.isExpired() && !co.isBroken() {
 				c.releaseConn(co)
 				return
 			}
@@ -151,13 +216,19 @@ func (c *connPool) releaseConn(co *conn) {
 func (c *connPool) askForNewConn(errCh chan<- error) {
 	co, err := c.dialer()
 	if err != nil {
-		errCh <- fmt.Errorf("create conn: %w", err)
+		errCh <- fmt.Errorf("creating conn: %w", err)
 		return
 	}
 
-	c.releaseConn(&conn{
+	newConn := &conn{
 		Conn:        co,
+		br:          bufio.NewReaderSize(co, bufioSize),
 		idleAt:      time.Now(),
 		idleTimeout: c.idleConnTimeout,
-	})
+		idleCh:      make(chan struct{}, 1),
+		activeCh:    make(chan struct{}, 1),
+	}
+	go newConn.readLoop()
+
+	c.releaseConn(newConn)
 }
