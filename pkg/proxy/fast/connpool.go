@@ -20,7 +20,7 @@ type conn struct {
 	idleCh      chan struct{}
 	idleTimeout time.Duration
 
-	activeCh chan struct{}
+	active bool
 
 	broken   bool
 	brokenMu sync.RWMutex
@@ -36,23 +36,20 @@ func (c *conn) isExpired() bool {
 }
 
 func (c *conn) isBroken() bool {
-	c.brokenMu.RLock()
-	defer c.brokenMu.RUnlock()
+	//c.brokenMu.RLock()
+	//defer c.brokenMu.RUnlock()
 	return c.broken
 }
 
 func (c *conn) markAsActive() {
-	select {
-	case c.activeCh <- struct{}{}:
-	default:
-		// Nothing to do the connection is already marked as active.
-	}
+	c.active = true
 }
 
 func (c *conn) markAsIdle() {
 	select {
 	case c.idleCh <- struct{}{}:
 		c.idleAt = time.Now()
+		c.active = false
 
 	default:
 		// Nothing to do the connection is already marked as idle.
@@ -61,25 +58,13 @@ func (c *conn) markAsIdle() {
 
 func (c *conn) readLoop() {
 	for {
-		select {
-		case <-c.activeCh:
-		case <-c.idleCh:
-			if _, err := c.br.Peek(1); err != nil {
-				c.brokenMu.Lock()
-				c.broken = true
-				c.brokenMu.Unlock()
-			}
-
-			// Pick returned because the connection is now active
-			// or some bytes are still available in the pipe which
-			// means that the connection is broken.
-			select {
-			case <-c.activeCh:
-			default:
-				c.brokenMu.Lock()
-				c.broken = true
-				c.brokenMu.Unlock()
-			}
+		<-c.idleCh
+		_, err := c.br.Peek(1)
+		if err != nil || (err == nil && !c.active) {
+			//c.brokenMu.Lock()
+			c.broken = true
+			//c.brokenMu.Unlock()
+			return
 		}
 	}
 }
@@ -226,7 +211,6 @@ func (c *connPool) askForNewConn(errCh chan<- error) {
 		idleAt:      time.Now(),
 		idleTimeout: c.idleConnTimeout,
 		idleCh:      make(chan struct{}, 1),
-		activeCh:    make(chan struct{}, 1),
 	}
 	go newConn.readLoop()
 
