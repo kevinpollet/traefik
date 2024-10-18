@@ -62,7 +62,7 @@ func (c *conn) readLoop() {
 		fmt.Println("Before Peek")
 		_, err := c.br.Peek(1)
 		fmt.Println("Peek", err)
-		if err != nil || (err == nil && !c.active) {
+		if err != nil {
 			//c.brokenMu.Lock()
 			c.broken = true
 			//c.brokenMu.Unlock()
