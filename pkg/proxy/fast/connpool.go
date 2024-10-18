@@ -212,7 +212,7 @@ func (c *connPool) askForNewConn(errCh chan<- error) {
 		idleTimeout: c.idleConnTimeout,
 		idleCh:      make(chan struct{}, 1),
 	}
-	go newConn.readLoop()
+	//go newConn.readLoop()
 
 	c.releaseConn(newConn)
 }
