@@ -59,7 +59,9 @@ func (c *conn) markAsIdle() {
 func (c *conn) readLoop() {
 	for {
 		<-c.idleCh
+		fmt.Println("Before Peek")
 		_, err := c.br.Peek(1)
+		fmt.Println("Peek", err)
 		if err != nil || (err == nil && !c.active) {
 			//c.brokenMu.Lock()
 			c.broken = true
@@ -212,7 +214,7 @@ func (c *connPool) askForNewConn(errCh chan<- error) {
 		idleTimeout: c.idleConnTimeout,
 		idleCh:      make(chan struct{}, 1),
 	}
-	//go newConn.readLoop()
+	go newConn.readLoop()
 
 	c.releaseConn(newConn)
 }
