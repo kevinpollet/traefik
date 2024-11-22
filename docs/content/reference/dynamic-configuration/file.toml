@@ -20,6 +20,9 @@
         [[http.routers.Router0.tls.domains]]
           main = "foobar"
           sans = ["foobar", "foobar"]
+      [http.routers.Router0.observability]
+        accessLogs = true
+        tracing = true
     [http.routers.Router1]
       entryPoints = ["foobar", "foobar"]
       middlewares = ["foobar", "foobar"]
@@ -38,6 +41,9 @@
         [[http.routers.Router1.tls.domains]]
           main = "foobar"
           sans = ["foobar", "foobar"]
+      [http.routers.Router1.observability]
+        accessLogs = true
+        tracing = true
   [http.services]
     [http.services.Service01]
       [http.services.Service01.failover]

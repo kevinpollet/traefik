@@ -25,6 +25,9 @@ http:
             sans:
               - foobar
               - foobar
+      observability:
+        accessLogs: true
+        tracing: true
     Router1:
       entryPoints:
         - foobar
@@ -48,6 +51,9 @@ http:
             sans:
               - foobar
               - foobar
+      observability:
+        accessLogs: true
+        tracing: true
   services:
     Service01:
       failover:

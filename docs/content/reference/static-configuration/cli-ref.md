@@ -210,6 +210,12 @@ HTTP/3 configuration. (Default: ```false```)
 `--entrypoints.<name>.http3.advertisedport`:  
 UDP port to advertise, on which HTTP/3 is available. (Default: ```0```)
 
+`--entrypoints.<name>.observability.accesslogs`:  
+ (Default: ```true```)
+
+`--entrypoints.<name>.observability.tracing`:  
+ (Default: ```true```)
+
 `--entrypoints.<name>.proxyprotocol`:  
 Proxy-Protocol configuration. (Default: ```false```)
 
