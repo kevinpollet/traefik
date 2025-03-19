@@ -13,12 +13,10 @@ import (
 	"github.com/traefik/paerser/parser"
 )
 
-type DeprecationLoader struct {
-	ConfigFileFlag string
-}
+type DeprecationLoader struct{}
 
 func (d DeprecationLoader) Load(args []string, cmd *cli.Command) (bool, error) {
-	if d.logDeprecation(cmd.Configuration, args) {
+	if logDeprecation(cmd.Configuration, args) {
 		return true, errors.New("incompatible deprecated static option found")
 	}
 
@@ -26,7 +24,7 @@ func (d DeprecationLoader) Load(args []string, cmd *cli.Command) (bool, error) {
 }
 
 // logDeprecation prints deprecation hints and returns whether incompatible deprecated options need to be removed.
-func (d DeprecationLoader) logDeprecation(traefikConfiguration interface{}, arguments []string) bool {
+func logDeprecation(traefikConfiguration interface{}, arguments []string) bool {
 	// This part doesn't handle properly a flag defined like this:
 	// --accesslog true
 	// where `true` could be considered as a new argument.
@@ -93,24 +91,16 @@ func (d DeprecationLoader) logDeprecation(traefikConfiguration interface{}, argu
 		configFileFlag = "traefik.configFile"
 	}
 
-	//if d.ConfigFileFlag != "" {
-	//	configFileFlag = "traefik." + d.ConfigFileFlag
-	//	if _, ok := ref[strings.ToLower(configFileFlag)]; ok {
-	//		configFileFlag = "traefik." + strings.ToLower(d.ConfigFileFlag)
-	//	}
-	//}
-
-	cmdConfig := &cmdConfiguration{}
-	_, err = loadConfigFiles(ref[configFileFlag], cmdConfig)
+	config := &configuration{}
+	_, err = loadConfigFiles(ref[configFileFlag], config)
 
 	if err == nil {
-		if cmdConfig.configuration.deprecationNotice(log.With().Str("loader", "FILE").Logger()) {
+		if config.deprecationNotice(log.With().Str("loader", "FILE").Logger()) {
 			return true
 		}
 	}
 
-	// ENV Loader section.
-	config := &configuration{}
+	config = &configuration{}
 	l := EnvLoader{}
 	_, err = l.Load(os.Args, &cli.Command{
 		Configuration: config,
@@ -185,11 +175,6 @@ func findTypedField(rType reflect.Type, node *parser.Node) (reflect.StructField,
 	}
 
 	return reflect.StructField{}, false
-}
-
-type cmdConfiguration struct {
-	configuration configuration
-	configFile    string
 }
 
 // configuration holds the static configuration removed/deprecated options.
