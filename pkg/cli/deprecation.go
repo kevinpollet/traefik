@@ -13,10 +13,12 @@ import (
 	"github.com/traefik/paerser/parser"
 )
 
-type DeprecationLoader struct{}
+type DeprecationLoader struct {
+	ConfigFileFlag string
+}
 
 func (d DeprecationLoader) Load(args []string, cmd *cli.Command) (bool, error) {
-	if logDeprecation(cmd.Configuration, args) {
+	if d.logDeprecation(cmd.Configuration, args) {
 		return true, errors.New("incompatible deprecated static option found")
 	}
 
@@ -24,7 +26,7 @@ func (d DeprecationLoader) Load(args []string, cmd *cli.Command) (bool, error) {
 }
 
 // logDeprecation prints deprecation hints and returns whether incompatible deprecated options need to be removed.
-func logDeprecation(traefikConfiguration interface{}, arguments []string) bool {
+func (d DeprecationLoader) logDeprecation(traefikConfiguration interface{}, arguments []string) bool {
 	// This part doesn't handle properly a flag defined like this:
 	// --accesslog true
 	// where `true` could be considered as a new argument.
@@ -91,16 +93,24 @@ func logDeprecation(traefikConfiguration interface{}, arguments []string) bool {
 		configFileFlag = "traefik.configFile"
 	}
 
-	config := &configuration{}
-	_, err = loadConfigFiles(ref[configFileFlag], config)
+	//if d.ConfigFileFlag != "" {
+	//	configFileFlag = "traefik." + d.ConfigFileFlag
+	//	if _, ok := ref[strings.ToLower(configFileFlag)]; ok {
+	//		configFileFlag = "traefik." + strings.ToLower(d.ConfigFileFlag)
+	//	}
+	//}
+
+	cmdConfig := &cmdConfiguration{}
+	_, err = loadConfigFiles(ref[configFileFlag], cmdConfig)
 
 	if err == nil {
-		if config.deprecationNotice(log.With().Str("loader", "FILE").Logger()) {
+		if cmdConfig.configuration.deprecationNotice(log.With().Str("loader", "FILE").Logger()) {
 			return true
 		}
 	}
 
-	config = &configuration{}
+	// ENV Loader section.
+	config := &configuration{}
 	l := EnvLoader{}
 	_, err = l.Load(os.Args, &cli.Command{
 		Configuration: config,
@@ -177,8 +187,14 @@ func findTypedField(rType reflect.Type, node *parser.Node) (reflect.StructField,
 	return reflect.StructField{}, false
 }
 
+type cmdConfiguration struct {
+	configuration configuration
+	configFile    string
+}
+
 // configuration holds the static configuration removed/deprecated options.
 type configuration struct {
+	Core         *core          `json:"core,omitempty" toml:"core,omitempty" yaml:"core,omitempty" label:"allowEmpty" file:"allowEmpty"`
 	Experimental *experimental  `json:"experimental,omitempty" toml:"experimental,omitempty" yaml:"experimental,omitempty" label:"allowEmpty" file:"allowEmpty"`
 	Pilot        map[string]any `json:"pilot,omitempty" toml:"pilot,omitempty" yaml:"pilot,omitempty" label:"allowEmpty" file:"allowEmpty"`
 	Providers    *providers     `json:"providers,omitempty" toml:"providers,omitempty" yaml:"providers,omitempty" label:"allowEmpty" file:"allowEmpty"`
@@ -197,10 +213,25 @@ func (c *configuration) deprecationNotice(logger zerolog.Logger) bool {
 			"For more information please read the migration guide: https://doc.traefik.io/traefik/v3.3/migration/v2-to-v3/#pilot")
 	}
 
+	incompatibleCore := c.Core.deprecationNotice(logger)
 	incompatibleExperimental := c.Experimental.deprecationNotice(logger)
 	incompatibleProviders := c.Providers.deprecationNotice(logger)
 	incompatibleTracing := c.Tracing.deprecationNotice(logger)
-	return incompatible || incompatibleExperimental || incompatibleProviders || incompatibleTracing
+	return incompatible || incompatibleCore || incompatibleExperimental || incompatibleProviders || incompatibleTracing
+}
+
+type core struct {
+	DefaultRuleSyntax string `json:"defaultRuleSyntax,omitempty" toml:"defaultRuleSyntax,omitempty" yaml:"defaultRuleSyntax,omitempty" label:"allowEmpty" file:"allowEmpty"`
+}
+
+func (c *core) deprecationNotice(logger zerolog.Logger) bool {
+	if c != nil && c.DefaultRuleSyntax != "" {
+		logger.Error().Msg("`Core.DefaultRuleSyntax` option has been deprecated in v3.4, and will be removed in the next major version." +
+			"Please consider migrating all router rules to v3 syntax." +
+			"For more information please read the migration guide: https://doc.traefik.io/traefik/v3.3/migration/v3/#rulesyntax")
+	}
+
+	return false
 }
 
 type providers struct {

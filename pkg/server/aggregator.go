@@ -156,6 +156,15 @@ func applyModel(cfg dynamic.Configuration) dynamic.Configuration {
 		for name, rt := range cfg.HTTP.Routers {
 			router := rt.DeepCopy()
 
+			// The `ruleSyntax` option is deprecated.
+			// We exclude the "default" value to avoid logging it,
+			// as it is the value used for internal models and computed rules.
+			if router.RuleSyntax != "" && router.RuleSyntax != "default" {
+				log.Warn().
+					Str(logs.RouterName, name).
+					Msgf("Router's `ruleSyntax` option is deprecated, please remove any usage of this option.")
+			}
+
 			if !router.DefaultRule && router.RuleSyntax == "" {
 				for modelName, model := range cfg.HTTP.Models {
 					// models cannot be provided by another provider than the internal one.

@@ -524,7 +524,7 @@ func TestLoadConfigurationFromIngresses(t *testing.T) {
 					Routers: map[string]*dynamic.Router{
 						"default-router": {
 							Rule:       "PathPrefix(`/`)",
-							RuleSyntax: "v3",
+							RuleSyntax: "default",
 							Service:    "default-backend",
 							Priority:   math.MinInt32,
 						},
@@ -976,7 +976,7 @@ func TestLoadConfigurationFromIngresses(t *testing.T) {
 					Routers: map[string]*dynamic.Router{
 						"default-router": {
 							Rule:       "PathPrefix(`/`)",
-							RuleSyntax: "v3",
+							RuleSyntax: "default",
 							Service:    "default-backend",
 							Priority:   math.MinInt32,
 						},
@@ -1511,7 +1511,7 @@ func TestLoadConfigurationFromIngresses(t *testing.T) {
 					Routers: map[string]*dynamic.Router{
 						"default-router": {
 							Rule:       "PathPrefix(`/`)",
-							RuleSyntax: "v3",
+							RuleSyntax: "default",
 							Priority:   math.MinInt32,
 							Service:    "default-backend",
 						},

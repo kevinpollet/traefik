@@ -123,7 +123,7 @@ func (p *Provider) loadTLSRoute(listener gatewayListener, route *gatev1alpha2.TL
 		}
 
 		router := dynamic.TCPRouter{
-			RuleSyntax:  "v3",
+			RuleSyntax:  "default",
 			Rule:        hostSNIRule(hostnames),
 			EntryPoints: []string{listener.EPName},
 			TLS: &dynamic.RouterTCPTLSConfig{
