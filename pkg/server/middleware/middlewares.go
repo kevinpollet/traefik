@@ -24,6 +24,7 @@ import (
 	gapiredirect "github.com/traefik/traefik/v3/pkg/middlewares/gatewayapi/redirect"
 	"github.com/traefik/traefik/v3/pkg/middlewares/gatewayapi/urlrewrite"
 	"github.com/traefik/traefik/v3/pkg/middlewares/grpcweb"
+	"github.com/traefik/traefik/v3/pkg/middlewares/hashi"
 	"github.com/traefik/traefik/v3/pkg/middlewares/headers"
 	"github.com/traefik/traefik/v3/pkg/middlewares/inflightreq"
 	"github.com/traefik/traefik/v3/pkg/middlewares/ipallowlist"
@@ -421,6 +422,19 @@ func (b *Builder) buildConstructor(ctx context.Context, middlewareName string) (
 		}
 		middleware = func(next http.Handler) (http.Handler, error) {
 			return urlrewrite.NewURLRewrite(ctx, next, *config.URLRewrite, middlewareName), nil
+		}
+	}
+
+	if config.Hashi != nil {
+		if middleware != nil {
+			return nil, badConf
+		}
+		middleware = func(next http.Handler) (http.Handler, error) {
+			m, err := hashi.New(ctx, next, *config.Hashi, middlewareName)
+			if err != nil {
+				return nil, fmt.Errorf("creating Hashi middleware: %w", err)
+			}
+			return m, nil
 		}
 	}
 

@@ -1,0 +1,33 @@
+syntax = "proto3";
+package proto;
+option go_package = "./proto";
+
+message Empty{}
+
+message HeaderValues {
+    repeated string values = 2;
+}
+
+message HeaderRequest {
+    string key = 1;
+    string value = 2;
+}
+
+message Request {
+    uint32 request_modifier_server = 1;
+
+    string method = 2;
+    string path = 3;
+    map<string, HeaderValues> headers = 4;
+}
+
+service MiddlewarePlugin {
+    rpc HandleRequest(Request) returns (Empty);
+}
+
+service RequestModifier {
+    rpc HeaderAdd(HeaderRequest) returns (Empty);
+    rpc HeaderSet(HeaderRequest) returns (Empty);
+    rpc HeaderDel(HeaderRequest) returns (Empty);
+}
+

@@ -17,6 +17,7 @@ import (
 
 	"github.com/containous/alice"
 	gokitmetrics "github.com/go-kit/kit/metrics"
+	"github.com/hashicorp/go-plugin"
 	"github.com/pires/go-proxyproto"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -129,6 +130,8 @@ func (eps TCPEntryPoints) Start() {
 
 // Stop the server entry points.
 func (eps TCPEntryPoints) Stop() {
+	plugin.CleanupClients() // FIXME
+
 	var wg sync.WaitGroup
 
 	for epn, ep := range eps {

@@ -1,0 +1,26 @@
+# Generate proto files
+
+- brew install protobuf
+- go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+- go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+- protoc -I=./proto --go_out=. --go-grpc_out=require_unimplemented_servers=false:paths=source_relative:. ./proto/plugin.proto
+
+# RPC vs GRPC
+
+## ✔️ When to Choose Which
+
+| **Criterion**                                  | **net/rpc (RPC)**              | **gRPC Mode**                                |
+| ---------------------------------------------- | ------------------------------ | -------------------------------------------- |
+| **Language support**                           | Go-only                        | Any language with gRPC support               |
+| **Serialization**                              | Gob (or custom)                | Protobuf (defined in `.proto` files)         |
+| **Protocol flexibility / updates**             | Hard-coded, versioning limited | Forward/backward compatibility with Protobuf |
+| **Concurrency/multiplexing**                   | yamux                          | HTTP/2 native multiplexing                   |
+| **Plugin instances per process**               | Multiple                       | Single instance per process                  |
+| **Future-proofing & community recommendation** | Legacy mode                    | Recommended standard mode                    |
+
+# Thoughts
+
+- The proto file must be shared with plugin developers, as well as the shared implementation
+- This requires implementing a new plugin mechanism to handle HTTP requests/responses (not possible to use http.Request and http.ResponseWriter directly).
+- The plugin will have to be compiled into a binary matching the architecture of the Traefik instance.
+    - Maybe we can compile right before running it

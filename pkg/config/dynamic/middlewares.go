@@ -50,6 +50,9 @@ type Middleware struct {
 	ResponseHeaderModifier *HeaderModifier  `json:"responseHeaderModifier,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	RequestRedirect        *RequestRedirect `json:"requestRedirect,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
 	URLRewrite             *URLRewrite      `json:"URLRewrite,omitempty" toml:"-" yaml:"-" label:"-" file:"-" kv:"-" export:"true"`
+
+	// FIXME: to be renamed.
+	Hashi *struct{} `json:"hashi,omitempty" toml:"hashi,omitempty" yaml:"hashi,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 }
 
 // +k8s:deepcopy-gen=true

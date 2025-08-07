@@ -33,6 +33,7 @@ require (
 	github.com/hashicorp/consul/api v1.26.1
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/hashicorp/go-plugin v1.6.3
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-version v1.7.0
 	github.com/hashicorp/nomad/api v0.0.0-20231213195942-64e3dca9274b // No tag on the repo.
@@ -116,6 +117,8 @@ require (
 	sigs.k8s.io/gateway-api v1.3.0
 	sigs.k8s.io/yaml v1.4.0
 )
+
+require google.golang.org/protobuf v1.36.6
 
 require (
 	cloud.google.com/go/auth v0.16.2 // indirect
@@ -243,6 +246,7 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-5 // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
+	github.com/hashicorp/yamux v0.1.1 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.159 // indirect
 	github.com/iij/doapi v0.0.0-20190504054126-0bbf12d6d7df // indirect
@@ -300,6 +304,7 @@ require (
 	github.com/nrdcg/oci-go-sdk/dns/v1065 v1065.95.2 // indirect
 	github.com/nrdcg/porkbun v0.4.0 // indirect
 	github.com/nzdjb/go-metaname v1.0.0 // indirect
+	github.com/oklog/run v1.0.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
@@ -379,7 +384,6 @@ require (
 	google.golang.org/api v0.242.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/h2non/gock.v1 v1.0.16 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
