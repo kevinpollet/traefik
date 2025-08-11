@@ -21,15 +21,13 @@ var Handshake = plugin.HandshakeConfig{
 	MagicCookieValue: "hello",
 }
 
-type RequestModifier interface {
-	HeaderAdd(key, value string) error
-	HeaderSet(key, value string) error
-	HeaderDel(key string) error
+type Response struct {
+	SetHeaders map[string]string
 }
 
 // MiddlewarePlugin is the interface that we're exposing as a plugin.
 type MiddlewarePlugin interface {
-	HandleRequest(req *proto.Request, modifier RequestModifier) error
+	HandleRequest(req *proto.Request) (*proto.Response, error)
 }
 
 type GRPCMiddlewarePlugin struct {
@@ -42,8 +40,7 @@ type GRPCMiddlewarePlugin struct {
 
 func (p *GRPCMiddlewarePlugin) GRPCServer(broker *plugin.GRPCBroker, s *grpc.Server) error {
 	proto.RegisterMiddlewarePluginServer(s, &GRPCServer{
-		Impl:   p.Impl,
-		broker: broker,
+		Impl: p.Impl,
 	})
 	return nil
 }
@@ -51,6 +48,5 @@ func (p *GRPCMiddlewarePlugin) GRPCServer(broker *plugin.GRPCBroker, s *grpc.Ser
 func (p *GRPCMiddlewarePlugin) GRPCClient(_ context.Context, broker *plugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
 	return &GRPCClient{
 		client: proto.NewMiddlewarePluginClient(c),
-		broker: broker,
 	}, nil
 }

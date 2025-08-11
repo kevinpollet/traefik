@@ -36,27 +36,8 @@ var startPlugin = sync.OnceFunc(func() {
 	}
 })
 
-type requestModifier struct {
-	req *http.Request
-}
-
-func (r *requestModifier) HeaderAdd(key, value string) error {
-	r.req.Header.Add(key, value)
-	return nil
-}
-
-func (r *requestModifier) HeaderSet(key, value string) error {
-	r.req.Header.Set(key, value)
-	return nil
-}
-
-func (r *requestModifier) HeaderDel(key string) error {
-	r.req.Header.Del(key)
-	return nil
-}
-
 type middlewarePlugin interface {
-	HandleRequest(req *http.Request, modifier shared.RequestModifier) error
+	HandleRequest(req *http.Request) (*shared.Response, error)
 }
 
 type Hashi struct {
@@ -98,9 +79,14 @@ func (h *Hashi) GetTracingInformation() (string, string) {
 }
 
 func (h *Hashi) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if err := h.plugin.HandleRequest(req, &requestModifier{req}); err != nil {
+	resp, err := h.plugin.HandleRequest(req)
+	if err != nil {
 		http.Error(rw, fmt.Sprintf("error handling request: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	for k, v := range resp.SetHeaders {
+		req.Header.Set(k, v)
 	}
 
 	h.next.ServeHTTP(rw, req)

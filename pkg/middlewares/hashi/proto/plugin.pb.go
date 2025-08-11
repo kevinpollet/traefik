@@ -101,71 +101,18 @@ func (x *HeaderValues) GetValues() []string {
 	return nil
 }
 
-type HeaderRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+type Request struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Method        string                   `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
+	Path          string                   `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Headers       map[string]*HeaderValues `protobuf:"bytes,3,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *HeaderRequest) Reset() {
-	*x = HeaderRequest{}
-	mi := &file_plugin_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *HeaderRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*HeaderRequest) ProtoMessage() {}
-
-func (x *HeaderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use HeaderRequest.ProtoReflect.Descriptor instead.
-func (*HeaderRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *HeaderRequest) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
-}
-
-func (x *HeaderRequest) GetValue() string {
-	if x != nil {
-		return x.Value
-	}
-	return ""
-}
-
-type Request struct {
-	state                 protoimpl.MessageState   `protogen:"open.v1"`
-	RequestModifierServer uint32                   `protobuf:"varint,1,opt,name=request_modifier_server,json=requestModifierServer,proto3" json:"request_modifier_server,omitempty"`
-	Method                string                   `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`
-	Path                  string                   `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
-	Headers               map[string]*HeaderValues `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
-}
-
 func (x *Request) Reset() {
 	*x = Request{}
-	mi := &file_plugin_proto_msgTypes[3]
+	mi := &file_plugin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -177,7 +124,7 @@ func (x *Request) String() string {
 func (*Request) ProtoMessage() {}
 
 func (x *Request) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[3]
+	mi := &file_plugin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -190,14 +137,7 @@ func (x *Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Request.ProtoReflect.Descriptor instead.
 func (*Request) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *Request) GetRequestModifierServer() uint32 {
-	if x != nil {
-		return x.RequestModifierServer
-	}
-	return 0
+	return file_plugin_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Request) GetMethod() string {
@@ -221,6 +161,50 @@ func (x *Request) GetHeaders() map[string]*HeaderValues {
 	return nil
 }
 
+type Response struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SetHeaders    map[string]string      `protobuf:"bytes,1,rep,name=set_headers,json=setHeaders,proto3" json:"set_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Response) Reset() {
+	*x = Response{}
+	mi := &file_plugin_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Response) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Response) ProtoMessage() {}
+
+func (x *Response) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Response.ProtoReflect.Descriptor instead.
+func (*Response) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Response) GetSetHeaders() map[string]string {
+	if x != nil {
+		return x.SetHeaders
+	}
+	return nil
+}
+
 var File_plugin_proto protoreflect.FileDescriptor
 
 const file_plugin_proto_rawDesc = "" +
@@ -228,24 +212,22 @@ const file_plugin_proto_rawDesc = "" +
 	"\fplugin.proto\x12\x05proto\"\a\n" +
 	"\x05Empty\"&\n" +
 	"\fHeaderValues\x12\x16\n" +
-	"\x06values\x18\x02 \x03(\tR\x06values\"7\n" +
-	"\rHeaderRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\xf5\x01\n" +
-	"\aRequest\x126\n" +
-	"\x17request_modifier_server\x18\x01 \x01(\rR\x15requestModifierServer\x12\x16\n" +
-	"\x06method\x18\x02 \x01(\tR\x06method\x12\x12\n" +
-	"\x04path\x18\x03 \x01(\tR\x04path\x125\n" +
-	"\aheaders\x18\x04 \x03(\v2\x1b.proto.Request.HeadersEntryR\aheaders\x1aO\n" +
+	"\x06values\x18\x02 \x03(\tR\x06values\"\xbd\x01\n" +
+	"\aRequest\x12\x16\n" +
+	"\x06method\x18\x01 \x01(\tR\x06method\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x125\n" +
+	"\aheaders\x18\x03 \x03(\v2\x1b.proto.Request.HeadersEntryR\aheaders\x1aO\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.proto.HeaderValuesR\x05value:\x028\x012A\n" +
-	"\x10MiddlewarePlugin\x12-\n" +
-	"\rHandleRequest\x12\x0e.proto.Request\x1a\f.proto.Empty2\xa4\x01\n" +
-	"\x0fRequestModifier\x12/\n" +
-	"\tHeaderAdd\x12\x14.proto.HeaderRequest\x1a\f.proto.Empty\x12/\n" +
-	"\tHeaderSet\x12\x14.proto.HeaderRequest\x1a\f.proto.Empty\x12/\n" +
-	"\tHeaderDel\x12\x14.proto.HeaderRequest\x1a\f.proto.EmptyB\tZ\a./protob\x06proto3"
+	"\x05value\x18\x02 \x01(\v2\x13.proto.HeaderValuesR\x05value:\x028\x01\"\x8b\x01\n" +
+	"\bResponse\x12@\n" +
+	"\vset_headers\x18\x01 \x03(\v2\x1f.proto.Response.SetHeadersEntryR\n" +
+	"setHeaders\x1a=\n" +
+	"\x0fSetHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012D\n" +
+	"\x10MiddlewarePlugin\x120\n" +
+	"\rHandleRequest\x12\x0e.proto.Request\x1a\x0f.proto.ResponseB\tZ\a./protob\x06proto3"
 
 var (
 	file_plugin_proto_rawDescOnce sync.Once
@@ -259,30 +241,26 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_plugin_proto_goTypes = []any{
-	(*Empty)(nil),         // 0: proto.Empty
-	(*HeaderValues)(nil),  // 1: proto.HeaderValues
-	(*HeaderRequest)(nil), // 2: proto.HeaderRequest
-	(*Request)(nil),       // 3: proto.Request
-	nil,                   // 4: proto.Request.HeadersEntry
+	(*Empty)(nil),        // 0: proto.Empty
+	(*HeaderValues)(nil), // 1: proto.HeaderValues
+	(*Request)(nil),      // 2: proto.Request
+	(*Response)(nil),     // 3: proto.Response
+	nil,                  // 4: proto.Request.HeadersEntry
+	nil,                  // 5: proto.Response.SetHeadersEntry
 }
 var file_plugin_proto_depIdxs = []int32{
 	4, // 0: proto.Request.headers:type_name -> proto.Request.HeadersEntry
-	1, // 1: proto.Request.HeadersEntry.value:type_name -> proto.HeaderValues
-	3, // 2: proto.MiddlewarePlugin.HandleRequest:input_type -> proto.Request
-	2, // 3: proto.RequestModifier.HeaderAdd:input_type -> proto.HeaderRequest
-	2, // 4: proto.RequestModifier.HeaderSet:input_type -> proto.HeaderRequest
-	2, // 5: proto.RequestModifier.HeaderDel:input_type -> proto.HeaderRequest
-	0, // 6: proto.MiddlewarePlugin.HandleRequest:output_type -> proto.Empty
-	0, // 7: proto.RequestModifier.HeaderAdd:output_type -> proto.Empty
-	0, // 8: proto.RequestModifier.HeaderSet:output_type -> proto.Empty
-	0, // 9: proto.RequestModifier.HeaderDel:output_type -> proto.Empty
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5, // 1: proto.Response.set_headers:type_name -> proto.Response.SetHeadersEntry
+	1, // 2: proto.Request.HeadersEntry.value:type_name -> proto.HeaderValues
+	2, // 3: proto.MiddlewarePlugin.HandleRequest:input_type -> proto.Request
+	3, // 4: proto.MiddlewarePlugin.HandleRequest:output_type -> proto.Response
+	4, // [4:5] is the sub-list for method output_type
+	3, // [3:4] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -296,9 +274,9 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   1,
 		},
 		GoTypes:           file_plugin_proto_goTypes,
 		DependencyIndexes: file_plugin_proto_depIdxs,

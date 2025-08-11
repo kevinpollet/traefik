@@ -8,11 +8,13 @@ import (
 
 type MyPlugin struct{}
 
-func (MyPlugin) HandleRequest(req *proto.Request, modifier shared.RequestModifier) error {
-	modifier.HeaderAdd("X-Plugin", "hello")
-	modifier.HeaderDel("X-Real-Ip")
-	println("Received request:", req.Method, req.Path, req.Headers)
-	return nil
+func (MyPlugin) HandleRequest(req *proto.Request) (*proto.Response, error) {
+	//println("Received request:", req.Method, req.Path, req.Headers)
+	return &proto.Response{
+		SetHeaders: map[string]string{
+			"X-Plugin": "hello",
+		},
+	}, nil
 }
 
 func main() {

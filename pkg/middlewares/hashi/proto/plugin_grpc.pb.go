@@ -26,7 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MiddlewarePluginClient interface {
-	HandleRequest(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Empty, error)
+	HandleRequest(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
 }
 
 type middlewarePluginClient struct {
@@ -37,9 +37,9 @@ func NewMiddlewarePluginClient(cc grpc.ClientConnInterface) MiddlewarePluginClie
 	return &middlewarePluginClient{cc}
 }
 
-func (c *middlewarePluginClient) HandleRequest(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Empty, error) {
+func (c *middlewarePluginClient) HandleRequest(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(Response)
 	err := c.cc.Invoke(ctx, MiddlewarePlugin_HandleRequest_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func (c *middlewarePluginClient) HandleRequest(ctx context.Context, in *Request,
 // All implementations should embed UnimplementedMiddlewarePluginServer
 // for forward compatibility.
 type MiddlewarePluginServer interface {
-	HandleRequest(context.Context, *Request) (*Empty, error)
+	HandleRequest(context.Context, *Request) (*Response, error)
 }
 
 // UnimplementedMiddlewarePluginServer should be embedded to have
@@ -61,7 +61,7 @@ type MiddlewarePluginServer interface {
 // pointer dereference when methods are called.
 type UnimplementedMiddlewarePluginServer struct{}
 
-func (UnimplementedMiddlewarePluginServer) HandleRequest(context.Context, *Request) (*Empty, error) {
+func (UnimplementedMiddlewarePluginServer) HandleRequest(context.Context, *Request) (*Response, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HandleRequest not implemented")
 }
 func (UnimplementedMiddlewarePluginServer) testEmbeddedByValue() {}
@@ -112,182 +112,6 @@ var MiddlewarePlugin_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HandleRequest",
 			Handler:    _MiddlewarePlugin_HandleRequest_Handler,
-		},
-	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "plugin.proto",
-}
-
-const (
-	RequestModifier_HeaderAdd_FullMethodName = "/proto.RequestModifier/HeaderAdd"
-	RequestModifier_HeaderSet_FullMethodName = "/proto.RequestModifier/HeaderSet"
-	RequestModifier_HeaderDel_FullMethodName = "/proto.RequestModifier/HeaderDel"
-)
-
-// RequestModifierClient is the client API for RequestModifier service.
-//
-// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type RequestModifierClient interface {
-	HeaderAdd(ctx context.Context, in *HeaderRequest, opts ...grpc.CallOption) (*Empty, error)
-	HeaderSet(ctx context.Context, in *HeaderRequest, opts ...grpc.CallOption) (*Empty, error)
-	HeaderDel(ctx context.Context, in *HeaderRequest, opts ...grpc.CallOption) (*Empty, error)
-}
-
-type requestModifierClient struct {
-	cc grpc.ClientConnInterface
-}
-
-func NewRequestModifierClient(cc grpc.ClientConnInterface) RequestModifierClient {
-	return &requestModifierClient{cc}
-}
-
-func (c *requestModifierClient) HeaderAdd(ctx context.Context, in *HeaderRequest, opts ...grpc.CallOption) (*Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
-	err := c.cc.Invoke(ctx, RequestModifier_HeaderAdd_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *requestModifierClient) HeaderSet(ctx context.Context, in *HeaderRequest, opts ...grpc.CallOption) (*Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
-	err := c.cc.Invoke(ctx, RequestModifier_HeaderSet_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *requestModifierClient) HeaderDel(ctx context.Context, in *HeaderRequest, opts ...grpc.CallOption) (*Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
-	err := c.cc.Invoke(ctx, RequestModifier_HeaderDel_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// RequestModifierServer is the server API for RequestModifier service.
-// All implementations should embed UnimplementedRequestModifierServer
-// for forward compatibility.
-type RequestModifierServer interface {
-	HeaderAdd(context.Context, *HeaderRequest) (*Empty, error)
-	HeaderSet(context.Context, *HeaderRequest) (*Empty, error)
-	HeaderDel(context.Context, *HeaderRequest) (*Empty, error)
-}
-
-// UnimplementedRequestModifierServer should be embedded to have
-// forward compatible implementations.
-//
-// NOTE: this should be embedded by value instead of pointer to avoid a nil
-// pointer dereference when methods are called.
-type UnimplementedRequestModifierServer struct{}
-
-func (UnimplementedRequestModifierServer) HeaderAdd(context.Context, *HeaderRequest) (*Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method HeaderAdd not implemented")
-}
-func (UnimplementedRequestModifierServer) HeaderSet(context.Context, *HeaderRequest) (*Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method HeaderSet not implemented")
-}
-func (UnimplementedRequestModifierServer) HeaderDel(context.Context, *HeaderRequest) (*Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method HeaderDel not implemented")
-}
-func (UnimplementedRequestModifierServer) testEmbeddedByValue() {}
-
-// UnsafeRequestModifierServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to RequestModifierServer will
-// result in compilation errors.
-type UnsafeRequestModifierServer interface {
-	mustEmbedUnimplementedRequestModifierServer()
-}
-
-func RegisterRequestModifierServer(s grpc.ServiceRegistrar, srv RequestModifierServer) {
-	// If the following call pancis, it indicates UnimplementedRequestModifierServer was
-	// embedded by pointer and is nil.  This will cause panics if an
-	// unimplemented method is ever invoked, so we test this at initialization
-	// time to prevent it from happening at runtime later due to I/O.
-	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
-		t.testEmbeddedByValue()
-	}
-	s.RegisterService(&RequestModifier_ServiceDesc, srv)
-}
-
-func _RequestModifier_HeaderAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HeaderRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RequestModifierServer).HeaderAdd(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RequestModifier_HeaderAdd_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RequestModifierServer).HeaderAdd(ctx, req.(*HeaderRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RequestModifier_HeaderSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HeaderRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RequestModifierServer).HeaderSet(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RequestModifier_HeaderSet_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RequestModifierServer).HeaderSet(ctx, req.(*HeaderRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RequestModifier_HeaderDel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HeaderRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RequestModifierServer).HeaderDel(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RequestModifier_HeaderDel_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RequestModifierServer).HeaderDel(ctx, req.(*HeaderRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-// RequestModifier_ServiceDesc is the grpc.ServiceDesc for RequestModifier service.
-// It's only intended for direct use with grpc.RegisterService,
-// and not to be introspected or modified (even as a copy)
-var RequestModifier_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.RequestModifier",
-	HandlerType: (*RequestModifierServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "HeaderAdd",
-			Handler:    _RequestModifier_HeaderAdd_Handler,
-		},
-		{
-			MethodName: "HeaderSet",
-			Handler:    _RequestModifier_HeaderSet_Handler,
-		},
-		{
-			MethodName: "HeaderDel",
-			Handler:    _RequestModifier_HeaderDel_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

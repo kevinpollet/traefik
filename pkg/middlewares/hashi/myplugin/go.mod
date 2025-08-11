@@ -3,7 +3,6 @@ module github.com/traefik/myplugin
 go 1.24.0
 
 require (
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/hashicorp/go-plugin v1.6.3
 	github.com/traefik/traefik/v3 v3.5.0
 )
