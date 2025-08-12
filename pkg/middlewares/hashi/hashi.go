@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"sync"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/hashicorp/go-plugin"
 	"github.com/traefik/traefik/v3/pkg/middlewares"
 	"github.com/traefik/traefik/v3/pkg/middlewares/hashi/shared"
@@ -36,13 +38,9 @@ var startPlugin = sync.OnceFunc(func() {
 	}
 })
 
-type middlewarePlugin interface {
-	HandleRequest(req *http.Request) (*shared.Response, error)
-}
-
 type Hashi struct {
 	name   string
-	plugin middlewarePlugin
+	plugin *shared.GRPCClient
 
 	next http.Handler
 }
@@ -62,7 +60,7 @@ func New(ctx context.Context, next http.Handler, config struct{}, name string) (
 
 	// We should have a MiddlewarePlugin store now!
 	// This feels like a normal interface implementation but is in fact over an RPC connection.
-	p, ok := raw.(middlewarePlugin)
+	p, ok := raw.(*shared.GRPCClient)
 	if !ok {
 		return nil, fmt.Errorf("expected middlewarePlugin, got %T", raw)
 	}
@@ -79,14 +77,33 @@ func (h *Hashi) GetTracingInformation() (string, string) {
 }
 
 func (h *Hashi) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	resp, err := h.plugin.HandleRequest(req)
+	var envoyHeaders []*corev3.HeaderValue
+	for k, v := range req.Header {
+		for _, vv := range v {
+			envoyHeaders = append(envoyHeaders, &corev3.HeaderValue{
+				Key:   k,
+				Value: vv,
+			})
+		}
+	}
+
+	resp, err := h.plugin.Process(req.Context(), &extprocv3.ProcessingRequest{
+		Request: &extprocv3.ProcessingRequest_RequestHeaders{
+			RequestHeaders: &extprocv3.HttpHeaders{
+				Headers:     &corev3.HeaderMap{Headers: envoyHeaders},
+				EndOfStream: req.ContentLength == 0,
+			},
+		},
+	})
 	if err != nil {
-		http.Error(rw, fmt.Sprintf("error handling request: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	for k, v := range resp.SetHeaders {
-		req.Header.Set(k, v)
+	if resp.GetRequestHeaders() != nil && resp.GetRequestHeaders().GetResponse() != nil && resp.GetRequestHeaders().GetResponse().GetHeaderMutation() != nil {
+		mutations := resp.GetRequestHeaders().GetResponse().GetHeaderMutation()
+		for _, header := range mutations.SetHeaders {
+			req.Header.Set(header.GetHeader().Key, header.GetHeader().Value)
+		}
 	}
 
 	h.next.ServeHTTP(rw, req)

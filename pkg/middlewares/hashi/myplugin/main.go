@@ -1,27 +1,49 @@
 package main
 
 import (
+	"github.com/davecgh/go-spew/spew"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/hashicorp/go-plugin"
-	"github.com/traefik/traefik/v3/pkg/middlewares/hashi/proto"
-	"github.com/traefik/traefik/v3/pkg/middlewares/hashi/shared"
+	"github.com/traefik/myplugin/shared"
 )
+
+var Handshake = plugin.HandshakeConfig{
+	// This isn't required when using VersionedPlugins
+	ProtocolVersion:  1,
+	MagicCookieKey:   "BASIC_PLUGIN",
+	MagicCookieValue: "hello",
+}
 
 type MyPlugin struct{}
 
-func (MyPlugin) HandleRequest(req *proto.Request) (*proto.Response, error) {
-	//println("Received request:", req.Method, req.Path, req.Headers)
-	return &proto.Response{
-		SetHeaders: map[string]string{
-			"X-Plugin": "hello",
+func (MyPlugin) Process(req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+	spew.Dump(req.GetRequestHeaders().GetHeaders())
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: &extprocv3.HeaderMutation{
+						SetHeaders: []*corev3.HeaderValueOption{
+							{
+								Header: &corev3.HeaderValue{Key: "X-Plugin", Value: "hello"},
+							},
+						},
+					},
+				},
+			},
 		},
 	}, nil
 }
 
 func main() {
 	plugin.Serve(&plugin.ServeConfig{
-		HandshakeConfig: shared.Handshake,
+		HandshakeConfig: Handshake,
 		Plugins: map[string]plugin.Plugin{
-			"myplugin": &shared.GRPCMiddlewarePlugin{Impl: &MyPlugin{}},
+			"myplugin": &shared.GRPCMiddlewarePlugin{
+				Impl: MyPlugin{},
+			},
 		},
 		// A non-nil value here enables gRPC serving for this plugin...
 		GRPCServer: plugin.DefaultGRPCServer,
