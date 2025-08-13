@@ -53,13 +53,18 @@ generate:
 
 .PHONY: binary
 #? binary: Build the binary
-binary: generate-webui dist
+binary: myplugin-binary generate-webui dist
 	@echo SHA: $(VERSION) $(CODENAME) $(DATE)
 	CGO_ENABLED=0 GOGC=${GOGC} GOOS=${GOOS} GOARCH=${GOARCH} go build ${FLAGS[*]} -ldflags "-s -w \
     -X github.com/traefik/traefik/v3/pkg/version.Version=$(VERSION) \
     -X github.com/traefik/traefik/v3/pkg/version.Codename=$(CODENAME) \
     -X github.com/traefik/traefik/v3/pkg/version.BuildDate=$(DATE)" \
     -installsuffix nocgo -o "./dist/${GOOS}/${GOARCH}/$(BIN_NAME)" ./cmd/traefik
+
+.PHONY: myplugin-binary
+myplugin-binary:
+	cd ./pkg/middlewares/hashi/myplugin && \
+	CGO_ENABLED=0 GOGC=${GOGC} GOOS=${GOOS} GOARCH=${GOARCH} go build ${FLAGS[*]} -installsuffix nocgo -o "../../../../dist/${GOOS}/${GOARCH}/myplugin" .
 
 binary-linux-arm64: export GOOS := linux
 binary-linux-arm64: export GOARCH := arm64

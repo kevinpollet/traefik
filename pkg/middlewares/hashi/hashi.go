@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -21,6 +23,16 @@ const typeName = "Hashi"
 // As stated in here:https://discuss.hashicorp.com/t/go-plugin-concurrency/1669 plugin client are meant to be reused and are goroutine-safe.
 var client plugin.ClientProtocol
 var startPlugin = sync.OnceFunc(func() {
+	var err error
+	//path := "/Users/kevinpollet/Documents/Dev/traefik/pkg/middlewares/hashi/myplugin"
+
+	// FIXME this should be commented to run with go run (for perf env).
+	path, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+	path = filepath.Dir(path)
+
 	c := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig:  shared.Handshake,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
@@ -28,10 +40,9 @@ var startPlugin = sync.OnceFunc(func() {
 		Plugins: map[string]plugin.Plugin{
 			"myplugin": &shared.GRPCMiddlewarePlugin{},
 		},
-		Cmd: exec.Command("sh", "-c", "/Users/kevinpollet/Documents/Dev/traefik/pkg/middlewares/hashi/myplugin/myplugin"), //  This could be injected by configuration.
+		Cmd: exec.Command("sh", "-c", path+"/myplugin"), //  This could be injected by configuration.
 	})
 
-	var err error
 	client, err = c.Client()
 	if err != nil {
 		panic(err) // FIXME

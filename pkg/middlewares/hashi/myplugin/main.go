@@ -1,25 +1,15 @@
 package main
 
 import (
-	"github.com/davecgh/go-spew/spew"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/hashicorp/go-plugin"
 	"github.com/traefik/myplugin/shared"
 )
 
-var Handshake = plugin.HandshakeConfig{
-	// This isn't required when using VersionedPlugins
-	ProtocolVersion:  1,
-	MagicCookieKey:   "BASIC_PLUGIN",
-	MagicCookieValue: "hello",
-}
-
 type MyPlugin struct{}
 
 func (MyPlugin) Process(req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
-	spew.Dump(req.GetRequestHeaders().GetHeaders())
-
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -39,7 +29,7 @@ func (MyPlugin) Process(req *extprocv3.ProcessingRequest) (*extprocv3.Processing
 
 func main() {
 	plugin.Serve(&plugin.ServeConfig{
-		HandshakeConfig: Handshake,
+		HandshakeConfig: shared.Handshake,
 		Plugins: map[string]plugin.Plugin{
 			"myplugin": &shared.GRPCMiddlewarePlugin{
 				Impl: MyPlugin{},
