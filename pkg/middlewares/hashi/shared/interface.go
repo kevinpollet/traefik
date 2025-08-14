@@ -7,8 +7,8 @@ package shared
 import (
 	"context"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/hashicorp/go-plugin"
+	"github.com/traefik/traefik/v3/pkg/middlewares/hashi/proto"
 	"google.golang.org/grpc"
 )
 
@@ -22,7 +22,7 @@ var Handshake = plugin.HandshakeConfig{
 
 // MiddlewarePlugin is the interface that we're exposing as a plugin.
 type MiddlewarePlugin interface {
-	Process(stream *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error)
+	Process(req *proto.Request) (*proto.Response, error)
 }
 
 type GRPCMiddlewarePlugin struct {
@@ -34,7 +34,7 @@ type GRPCMiddlewarePlugin struct {
 }
 
 func (p *GRPCMiddlewarePlugin) GRPCServer(broker *plugin.GRPCBroker, s *grpc.Server) error {
-	extprocv3.RegisterExternalProcessorServer(s, &GRPCServer{
+	proto.RegisterMiddlewareServer(s, &GRPCServer{
 		Impl: p.Impl,
 	})
 	return nil
@@ -42,6 +42,6 @@ func (p *GRPCMiddlewarePlugin) GRPCServer(broker *plugin.GRPCBroker, s *grpc.Ser
 
 func (p *GRPCMiddlewarePlugin) GRPCClient(_ context.Context, broker *plugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
 	return &GRPCClient{
-		client: extprocv3.NewExternalProcessorClient(c),
+		client: proto.NewMiddlewareClient(c),
 	}, nil
 }

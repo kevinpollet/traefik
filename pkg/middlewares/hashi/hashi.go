@@ -9,10 +9,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/hashicorp/go-plugin"
 	"github.com/traefik/traefik/v3/pkg/middlewares"
+	"github.com/traefik/traefik/v3/pkg/middlewares/hashi/proto"
 	"github.com/traefik/traefik/v3/pkg/middlewares/hashi/shared"
 )
 
@@ -88,33 +87,22 @@ func (h *Hashi) GetTracingInformation() (string, string) {
 }
 
 func (h *Hashi) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	var envoyHeaders []*corev3.HeaderValue
+	headers := make(map[string]*proto.HeaderValues)
 	for k, v := range req.Header {
+		var hv proto.HeaderValues
 		for _, vv := range v {
-			envoyHeaders = append(envoyHeaders, &corev3.HeaderValue{
-				Key:   k,
-				Value: vv,
-			})
+			hv.Value = append(hv.Value, vv)
 		}
+		headers[k] = &hv
 	}
 
-	resp, err := h.plugin.Process(req.Context(), &extprocv3.ProcessingRequest{
-		Request: &extprocv3.ProcessingRequest_RequestHeaders{
-			RequestHeaders: &extprocv3.HttpHeaders{
-				Headers:     &corev3.HeaderMap{Headers: envoyHeaders},
-				EndOfStream: req.ContentLength == 0,
-			},
-		},
-	})
+	resp, err := h.plugin.Process(req.Context(), &proto.Request{Headers: headers})
 	if err != nil {
 		return
 	}
 
-	if resp.GetRequestHeaders() != nil && resp.GetRequestHeaders().GetResponse() != nil && resp.GetRequestHeaders().GetResponse().GetHeaderMutation() != nil {
-		mutations := resp.GetRequestHeaders().GetResponse().GetHeaderMutation()
-		for _, header := range mutations.SetHeaders {
-			req.Header.Set(header.GetHeader().Key, header.GetHeader().Value)
-		}
+	for k, v := range resp.SetHeaders {
+		req.Header.Set(k, v)
 	}
 
 	h.next.ServeHTTP(rw, req)
