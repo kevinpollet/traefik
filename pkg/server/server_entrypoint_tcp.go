@@ -58,6 +58,8 @@ type httpForwarder struct {
 	net.Listener
 	connChan chan net.Conn
 	errChan  chan error
+	once     sync.Once
+	err      error
 }
 
 func newHTTPForwarder(ln net.Listener) *httpForwarder {
@@ -76,11 +78,21 @@ func (h *httpForwarder) ServeTCP(conn tcp.WriteCloser) {
 // Accept retrieves a served connection in ServeTCP.
 func (h *httpForwarder) Accept() (net.Conn, error) {
 	select {
-	case conn := <-h.connChan:
+	case conn, ok := <-h.connChan:
+		if !ok {
+			return nil, http.ErrServerClosed
+		}
 		return conn, nil
 	case err := <-h.errChan:
 		return nil, err
 	}
+}
+func (h *httpForwarder) Close() error {
+	h.once.Do(func() {
+		close(h.connChan)
+		h.err = h.Listener.Close()
+	})
+	return h.err
 }
 
 // TCPEntryPoints holds a map of TCPEntryPoint (the entrypoint names being the keys).
@@ -164,7 +176,22 @@ type TCPEntryPoint struct {
 	httpsServer            *httpServer
 
 	http3Server *http3server
+
+	inShutdown bool
 }
+
+type onceCloseListener struct {
+	net.Listener
+	once     sync.Once
+	closeErr error
+}
+
+func (oc *onceCloseListener) Close() error {
+	oc.once.Do(oc.close)
+	return oc.closeErr
+}
+
+func (oc *onceCloseListener) close() { oc.closeErr = oc.Listener.Close() }
 
 // NewTCPEntryPoint creates a new TCPEntryPoint.
 func NewTCPEntryPoint(ctx context.Context, name string, config *static.EntryPoint, hostResolverConfig *types.HostResolverConfig, openConnectionsGauge gokitmetrics.Gauge) (*TCPEntryPoint, error) {
@@ -174,6 +201,7 @@ func NewTCPEntryPoint(ctx context.Context, name string, config *static.EntryPoin
 	if err != nil {
 		return nil, fmt.Errorf("error preparing server: %w", err)
 	}
+	listener = &onceCloseListener{Listener: listener}
 
 	rt, err := tcprouter.NewRouter()
 	if err != nil {
@@ -226,8 +254,11 @@ func (e *TCPEntryPoint) Start(ctx context.Context) {
 
 	for {
 		conn, err := e.listener.Accept()
+		if err != nil && e.inShutdown {
+			return
+		}
 		if err != nil {
-			logger.Error().Err(err).Send()
+			logger.Error().Err(err).Msg("ddd")
 
 			var opErr *net.OpError
 			if errors.As(err, &opErr) && opErr.Temporary() {
@@ -276,6 +307,8 @@ func (e *TCPEntryPoint) Start(ctx context.Context) {
 // Shutdown stops the TCP connections.
 func (e *TCPEntryPoint) Shutdown(ctx context.Context) {
 	logger := log.Ctx(ctx)
+
+	e.inShutdown = true
 
 	reqAcceptGraceTimeOut := time.Duration(e.transportConfiguration.LifeCycle.RequestAcceptGraceTimeout)
 	if reqAcceptGraceTimeOut > 0 {
