@@ -264,30 +264,27 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 	}
 	ingressClasses = filterIngressClass(ics, p.IngressClassByName, p.IngressClass, p.ControllerClass)
 
-	ingresses := p.k8sClient.ListIngresses()
-
 	hosts := make(map[string]bool)
-	for _, ing := range ingresses {
-		if !p.shouldProcessIngress(ing, ingressClasses) {
+	ingressesToProcess := make([]*netv1.Ingress, 0)
+	for _, ingress := range p.k8sClient.ListIngresses() {
+		if !p.shouldProcessIngress(ingress, ingressClasses) {
 			continue
 		}
 
-		for _, rule := range ing.Spec.Rules {
+		for _, rule := range ingress.Spec.Rules {
 			if !hosts[rule.Host] {
 				hosts[rule.Host] = true
 			}
 		}
+
+		ingressesToProcess = append(ingressesToProcess, ingress)
 	}
 
 	uniqCerts := make(map[string]*tls.CertAndStores)
 	tlsOptions := make(map[string]tls.Options)
-	for _, ingress := range ingresses {
+	for _, ingress := range ingressesToProcess {
 		logger := log.Ctx(ctx).With().Str("ingress", ingress.Name).Str("namespace", ingress.Namespace).Logger()
 		ctxIngress := logger.WithContext(ctx)
-
-		if !p.shouldProcessIngress(ingress, ingressClasses) {
-			continue
-		}
 
 		ingressConfig, err := parseIngressConfig(ingress)
 		if err != nil {
