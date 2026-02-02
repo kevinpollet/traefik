@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/docker/docker/daemon/logger"
 	"github.com/mitchellh/hashstructure"
 	"github.com/rs/zerolog/log"
 	ptypes "github.com/traefik/paerser/types"
@@ -215,14 +214,14 @@ func (p *Provider) newK8sClient() (*clientWrapper, error) {
 }
 
 type i struct {
-	*netv1.Ingress // FIXME should be a field
+	Ingress       *netv1.Ingress
+	IngressConfig ingressConfig
 
-	IngressConfig  ingressConfig
-	DefaultBackend *netv1.IngressBackend // FIXME require?
-
-	RuleIdx int
-	PathIdx int
-	Path    netv1.HTTPIngressPath
+	RuleIdx  int
+	PathIdx  int
+	Path     string
+	PathType netv1.PathType
+	Backend  netv1.IngressBackend
 }
 
 func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration {
@@ -294,42 +293,50 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 			continue
 		}
 
-		// FIXME handle passthrough
-		//if host == "" {
-		//	logger.Error().Err(err).Msg("Cannot process ssl-passthrough for rule without host")
-		//	continue
-		//}
-		//
-		//var backend *netv1.IngressBackend
-		//if rule.HTTP != nil {
-		//	for _, path := range rule.HTTP.Paths {
-		//		if path.Path == "/" {
-		//			backend = &path.Backend
-		//			break
-		//		}
-		//	}
-		//} else if ingress.Spec.DefaultBackend != nil {
-		//	// Passthrough with the default backend if no HTTP section.
-		//	backend = ingress.Spec.DefaultBackend
-		//}
-		//
-		//if backend == nil {
-		//	logger.Error().Msgf("No backend found for ssl-passthrough for rule with host %q", rule.Host)
-		//	continue
-		//}
-
 		sslPassthrough := ptr.Deref(ingressConfig.SSLPassthrough, false)
 		if sslPassthrough {
+			for ri, rule := range ing.Spec.Rules {
+				if rule.Host == "" {
+					logger.Error().Err(err).Msg("Cannot process ssl-passthrough for rule without host")
+					continue
+				}
+
+				var (
+					backend *netv1.IngressBackend
+					pathIdx int
+				)
+				if rule.HTTP != nil {
+					for pi, path := range rule.HTTP.Paths {
+						if path.Path == "/" {
+							backend = &path.Backend
+							pathIdx = pi
+							break
+						}
+					}
+				} else if ing.Spec.DefaultBackend != nil {
+					// Passthrough with the default backend if no HTTP section.
+					backend = ing.Spec.DefaultBackend
+				}
+
+				if backend == nil {
+					logger.Error().Msgf("No backend found for ssl-passthrough for rule with host %q", rule.Host)
+					continue
+				}
+
+				ingressesByHost[rule.Host] = append(ingressesByHost[rule.Host], i{
+					Ingress:       ing,
+					IngressConfig: ingressConfig,
+					//Path:           path, FIXME
+					RuleIdx: ri,
+					PathIdx: pathIdx, // FIXME index for default backend
+				})
+
+			}
 
 			continue
 		}
 
 		for ri, rule := range ing.Spec.Rules {
-			if sslPassthrough && rule.Host == "" {
-				logger.Error().Err(err).Msg("Cannot process ssl-passthrough for rule without host")
-				continue
-			}
-
 			// FIXME handle no rule
 			if rule.HTTP == nil {
 				continue
@@ -350,12 +357,13 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				}
 
 				ingressesByHost[rule.Host] = append(ingressesByHost[rule.Host], i{
-					Ingress:        ing,
-					IngressConfig:  ingressConfig,
-					DefaultBackend: ing.Spec.DefaultBackend,
-					Path:           path,
-					RuleIdx:        ri,
-					PathIdx:        pi,
+					Ingress:       ing,
+					IngressConfig: ingressConfig,
+					RuleIdx:       ri,
+					PathIdx:       pi,
+					Path:          path.Path,
+					PathType:      ptr.Deref(path.PathType, netv1.PathTypePrefix),
+					Backend:       path.Backend,
 				})
 			}
 		}
@@ -365,7 +373,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 	uniqTLSOptions := make(map[string]tls.Options)
 	for host, ingresses := range ingressesByHost {
 		for _, ingress := range ingresses {
-			logger := log.Ctx(ctx).With().Str("ingress", ingress.Name).Str("namespace", ingress.Namespace).Logger()
+			logger := log.Ctx(ctx).With().Str("ingress", ingress.Ingress.Name).Str("namespace", ingress.Ingress.Namespace).Logger()
 			ctxIngress := logger.WithContext(ctx)
 
 			// FIXME this has to be done only once by ingress
@@ -375,7 +383,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 
 			// FIXME this has to be done only once by ingress
 			var hasTLS bool
-			if len(ingress.Spec.TLS) > 0 {
+			if len(ingress.Ingress.Spec.TLS) > 0 {
 				hasTLS = true
 				if err := p.loadCertificates(ctxIngress, ingress.Ingress, uniqCerts); err != nil {
 					logger.Error().Err(err).Msg("Error configuring TLS")
@@ -386,10 +394,10 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 			var clientAuthTLSOptionName string
 			// FIXME building TLS option has to be done only once by ingress
 			if ingress.IngressConfig.AuthTLSSecret != nil {
-				tlsOptName := provider.Normalize(ingress.Namespace + "-" + ingress.Name + "-" + *ingress.IngressConfig.AuthTLSSecret)
+				tlsOptName := provider.Normalize(ingress.Ingress.Namespace + "-" + ingress.Ingress.Name + "-" + *ingress.IngressConfig.AuthTLSSecret)
 
 				if _, exists := uniqTLSOptions[tlsOptName]; !exists {
-					tlsOpt, err := p.buildClientAuthTLSOption(ingress.Namespace, ingress.IngressConfig)
+					tlsOpt, err := p.buildClientAuthTLSOption(ingress.Ingress.Namespace, ingress.IngressConfig)
 					if err != nil {
 						logger.Error().Err(err).Msg("Error configuring client auth TLS")
 						continue
@@ -401,7 +409,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				clientAuthTLSOptionName = tlsOptName
 			}
 
-			namedServersTransport, err := p.buildServersTransport(ingress.Namespace, ingress.Name, ingress.IngressConfig)
+			namedServersTransport, err := p.buildServersTransport(ingress.Ingress.Namespace, ingress.Ingress.Name, ingress.IngressConfig)
 			if err != nil {
 				logger.Error().Err(err).Msg("Ignoring Ingress cannot create proxy SSL configuration")
 				continue
@@ -409,19 +417,19 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 
 			// FIXME handle default bakckend
 			var defaultBackendService *dynamic.Service
-			if ingress.Spec.DefaultBackend != nil && ingress.Spec.DefaultBackend.Service != nil {
+			if ingress.Ingress.Spec.DefaultBackend != nil && ingress.Ingress.Spec.DefaultBackend.Service != nil {
 				var err error
-				defaultBackendService, err = p.buildService(ingress.Namespace, *ingress.Spec.DefaultBackend, ingress.IngressConfig)
+				defaultBackendService, err = p.buildService(ingress.Ingress.Namespace, *ingress.Ingress.Spec.DefaultBackend, ingress.IngressConfig)
 				if err != nil {
 					logger.Error().
-						Str("serviceName", ingress.Spec.DefaultBackend.Service.Name).
-						Str("servicePort", ingress.Spec.DefaultBackend.Service.Port.String()).
+						Str("serviceName", ingress.Ingress.Spec.DefaultBackend.Service.Name).
+						Str("servicePort", ingress.Ingress.Spec.DefaultBackend.Service.Port.String()).
 						Err(err).
 						Msg("Cannot create default backend service")
 				}
 			}
 
-			if defaultBackendService != nil && len(ingress.Spec.Rules) == 0 {
+			if defaultBackendService != nil && len(ingress.Ingress.Spec.Rules) == 0 {
 				rt := &dynamic.Router{
 					Rule: "PathPrefix(`/`)",
 					// "default" stands for the default rule syntax in Traefik v3, i.e. the v3 syntax.
@@ -430,7 +438,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 					Service:    defaultBackendName,
 				}
 
-				if err := p.applyMiddlewares(ingress.Namespace, defaultBackendName, "", "", ingressesByHost, ingress.IngressConfig, hasTLS, rt, conf); err != nil {
+				if err := p.applyMiddlewares(ingress.Ingress.Namespace, defaultBackendName, "", "", ingressesByHost, ingress.IngressConfig, hasTLS, rt, conf); err != nil {
 					logger.Error().Err(err).Msg("Error applying middlewares")
 				}
 
@@ -448,7 +456,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 					rtTLS.TLS.Options = clientAuthTLSOptionName
 				}
 
-				if err := p.applyMiddlewares(ingress.Namespace, defaultBackendTLSName, "", "", ingressesByHost, ingress.IngressConfig, false, rtTLS, conf); err != nil {
+				if err := p.applyMiddlewares(ingress.Ingress.Namespace, defaultBackendTLSName, "", "", ingressesByHost, ingress.IngressConfig, false, rtTLS, conf); err != nil {
 					logger.Error().Err(err).Msg("Error applying middlewares")
 				}
 
@@ -462,48 +470,25 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 			}
 
 			if ptr.Deref(ingress.IngressConfig.SSLPassthrough, false) {
-				// FIXME host can be empty?
-				if host == "" {
-					logger.Error().Err(err).Msg("Cannot process ssl-passthrough for rule without host")
-					continue
-				}
 
-				var backend *netv1.IngressBackend
-				if rule.HTTP != nil {
-					for _, path := range rule.HTTP.Paths {
-						if path.Path == "/" {
-							backend = &path.Backend
-							break
-						}
-					}
-				} else if ingress.Spec.DefaultBackend != nil {
-					// Passthrough with the default backend if no HTTP section.
-					backend = ingress.Spec.DefaultBackend
-				}
-
-				if backend == nil {
-					logger.Error().Msgf("No backend found for ssl-passthrough for rule with host %q", rule.Host)
-					continue
-				}
-
-				service, err := p.buildPassthroughService(ingress.Namespace, *backend, ingress.IngressConfig)
+				service, err := p.buildPassthroughService(ingress.Ingress.Namespace, ingress.Backend, ingress.IngressConfig)
 				if err != nil {
-					logger.Error().Err(err).Msgf("Cannot create passthrough service for %s", backend.Service.Name)
+					logger.Error().Err(err).Msgf("Cannot create passthrough service for %s", ingress.Backend.Service.Name)
 					continue
 				}
 
-				port := backend.Service.Port.Name
-				if len(backend.Service.Port.Name) == 0 {
-					port = strconv.Itoa(int(backend.Service.Port.Number))
+				port := ingress.Backend.Service.Port.Name
+				if len(ingress.Backend.Service.Port.Name) == 0 {
+					port = strconv.Itoa(int(ingress.Backend.Service.Port.Number))
 				}
 
-				serviceName := provider.Normalize(ingress.Namespace + "-" + backend.Service.Name + "-" + port)
+				serviceName := provider.Normalize(ingress.Ingress.Namespace + "-" + ingress.Backend.Service.Name + "-" + port)
 				conf.TCP.Services[serviceName] = service
 
-				routerKey := strings.TrimPrefix(provider.Normalize(ingress.Namespace+"-"+ingress.Name+"-"+rule.Host), "-")
+				routerKey := strings.TrimPrefix(provider.Normalize(ingress.Ingress.Namespace+"-"+ingress.Ingress.Name+"-"+host), "-")
 
 				conf.TCP.Routers[routerKey] = &dynamic.TCPRouter{
-					Rule: fmt.Sprintf("HostSNI(`%s`)", rule.Host),
+					Rule: fmt.Sprintf("HostSNI(`%s`)", host),
 					// "default" stands for the default rule syntax in Traefik v3, i.e. the v3 syntax.
 					RuleSyntax: "default",
 					Service:    serviceName,
@@ -562,26 +547,26 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 			//	continue
 			//}
 
-			portString := ingress.Path.Backend.Service.Port.Name
-			if len(ingress.Path.Backend.Service.Port.Name) == 0 {
-				portString = strconv.Itoa(int(ingress.Path.Backend.Service.Port.Number))
+			portString := ingress.Backend.Service.Port.Name
+			if len(ingress.Backend.Service.Port.Name) == 0 {
+				portString = strconv.Itoa(int(ingress.Backend.Service.Port.Number))
 			}
 
 			// TODO: if no service, do not add middlewares and 503.
-			serviceName := provider.Normalize(ingress.Namespace + "-" + ingress.Name + "-" + ingress.Path.Backend.Service.Name + "-" + portString)
+			serviceName := provider.Normalize(ingress.Ingress.Namespace + "-" + ingress.Ingress.Name + "-" + ingress.Backend.Service.Name + "-" + portString)
 
-			service, err := p.buildService(ingress.Namespace, ingress.Path.Backend, ingress.IngressConfig)
+			service, err := p.buildService(ingress.Ingress.Namespace, ingress.Backend, ingress.IngressConfig)
 			if err != nil {
 				logger.Error().
-					Str("serviceName", ingress.Path.Backend.Service.Name).
-					Str("servicePort", ingress.Path.Backend.Service.Port.String()).
+					Str("serviceName", ingress.Backend.Service.Name).
+					Str("servicePort", ingress.Backend.Service.Port.String()).
 					Err(err).
 					Msg("Cannot create service")
 				continue
 			}
 
 			rt := &dynamic.Router{
-				Rule: buildRule(host, ingress.Path, ingress.IngressConfig),
+				Rule: "", // buildRule(host, ingress.Path, ingress.IngressConfig), FIXME
 				// "default" stands for the default rule syntax in Traefik v3, i.e. the v3 syntax.
 				RuleSyntax: "default",
 				Service:    serviceName,
@@ -594,7 +579,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				}
 			}
 
-			routerKey := provider.Normalize(fmt.Sprintf("%s-%s-rule-%d-path-%d", ingress.Namespace, ingress.Name, ingress.RuleIdx, ingress.PathIdx))
+			routerKey := provider.Normalize(fmt.Sprintf("%s-%s-rule-%d-path-%d", ingress.Ingress.Namespace, ingress.Ingress.Name, ingress.RuleIdx, ingress.PathIdx))
 
 			conf.HTTP.Routers[routerKey] = rt
 			conf.HTTP.Services[serviceName] = service
@@ -604,7 +589,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				conf.HTTP.ServersTransports[namedServersTransport.Name] = namedServersTransport.ServersTransport
 			}
 
-			if err := p.applyMiddlewares(ingress.Namespace, routerKey, ingress.Path.Path, host, ingressesByHost, ingress.IngressConfig, hasTLS, rt, conf); err != nil {
+			if err := p.applyMiddlewares(ingress.Ingress.Namespace, routerKey, ingress.Path, host, ingressesByHost, ingress.IngressConfig, hasTLS, rt, conf); err != nil {
 				logger.Error().Err(err).Msg("Error applying middlewares")
 			}
 		}
