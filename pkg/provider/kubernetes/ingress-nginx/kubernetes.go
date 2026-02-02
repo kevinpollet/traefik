@@ -50,6 +50,11 @@ type backendAddress struct {
 	Fenced  bool
 }
 
+type namedService struct {
+	Name    string
+	Service *dynamic.Service
+}
+
 type namedServersTransport struct {
 	Name             string
 	ServersTransport *dynamic.ServersTransport
@@ -64,6 +69,12 @@ type ingress struct {
 	*netv1.Ingress
 
 	Config ingressConfig
+}
+
+// FIXME add all config
+type canaryConfig struct {
+	Weight  *int
+	Backend netv1.IngressBackend
 }
 
 // Provider holds configurations of the provider.
@@ -236,7 +247,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 	// We configure the default backend when it is configured at the provider level.
 	if p.defaultBackendServiceNamespace != "" && p.defaultBackendServiceName != "" {
 		ib := netv1.IngressBackend{Service: &netv1.IngressServiceBackend{Name: p.defaultBackendServiceName}}
-		svc, err := p.buildService(p.defaultBackendServiceNamespace, ib, ingressConfig{})
+		svc, err := p.buildService(p.defaultBackendServiceNamespace, ingressConfig{}, ib)
 		if err != nil {
 			log.Ctx(ctx).Error().Err(err).Msg("Cannot build default backend service")
 			return conf
@@ -276,17 +287,11 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 
 	// Canary Ingress --> Original Ingress annotations
 
-	// FIXME add all config
-	type canaryConfig struct {
-		Weight  *int
-		Service netv1.IngressServiceBackend
-	}
-
 	// key: host+path+pathtype
 	canaries := make(map[string]canaryConfig)
 	ingressConfigs := make(map[string]ingressConfig) // might be server -> location
-
 	hosts := make(map[string]bool)
+
 	ingressesToProcess := make([]ingress, 0)
 	for _, ing := range p.k8sClient.ListIngresses() {
 		if !p.shouldProcessIngress(ing, ingressClasses) {
@@ -311,7 +316,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 					if ingressConfig.Canary != nil && ptr.Deref(ingressConfig.Canary, false) && path.Backend.Service != nil {
 						canaries[rule.Host+path.Path+string(pathType)] = canaryConfig{
 							Weight:  ingressConfig.CanaryWeight,
-							Service: *path.Backend.Service,
+							Backend: path.Backend,
 						}
 					}
 				}
@@ -374,7 +379,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 		var defaultBackendService *dynamic.Service
 		if ingress.Spec.DefaultBackend != nil && ingress.Spec.DefaultBackend.Service != nil {
 			var err error
-			defaultBackendService, err = p.buildService(ingress.Namespace, *ingress.Spec.DefaultBackend, ingress.Config)
+			defaultBackendService, err = p.buildService(ingress.Namespace, ingress.Config, *ingress.Spec.DefaultBackend)
 			if err != nil {
 				logger.Error().
 					Str("serviceName", ingress.Spec.DefaultBackend.Service.Name).
@@ -527,20 +532,22 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				// As NGINX we are ignoring resource backend.
 				// An Ingress backend must have se service or a resource definition.
 				if pa.Backend.Service == nil {
-					logger.Error().Str("path", pa.Path).
-						Err(err).Msg("Ignoring path with no service backend")
+					logger.Error().
+						Str("path", pa.Path).
+						Err(err).
+						Msg("Ignoring path with no service backend")
 					continue
 				}
 
 				portString := pa.Backend.Service.Port.Name
-				if len(pa.Backend.Service.Port.Name) == 0 {
+				if len(portString) == 0 {
 					portString = strconv.Itoa(int(pa.Backend.Service.Port.Number))
 				}
 
 				// TODO: if no service, do not add middlewares and 503.
 				serviceName := provider.Normalize(ingress.Namespace + "-" + ingress.Name + "-" + pa.Backend.Service.Name + "-" + portString)
 
-				service, err := p.buildService(ingress.Namespace, pa.Backend, ingress.Config)
+				service, err := p.buildService(ingress.Namespace, ingress.Config, pa.Backend)
 				if err != nil {
 					logger.Error().
 						Str("serviceName", pa.Backend.Service.Name).
@@ -630,8 +637,69 @@ func (p *Provider) buildServersTransport(namespace, name string, cfg ingressConf
 	return nst, nil
 }
 
-func (p *Provider) buildService(namespace string, backend netv1.IngressBackend, cfg ingressConfig) (*dynamic.Service, error) {
-	backendAddresses, err := p.getBackendAddresses(namespace, backend, cfg)
+// FIXME it should be not required to pass INgressBackend
+func (p *Provider) buildWeightedRoundRobin(ingNamespace, ingName string, ingConfig ingressConfig, canaryConfig *canaryConfig, backend netv1.IngressBackend) (string, dynamic.WeightedRoundRobin, []namedService, error) {
+
+	// Same ingress
+	// toto.com -> service A -> port 80
+	// titi.com -> service A -> port 80
+
+	prefix := provider.Normalize(ingNamespace + "-" + ingName + "-" + backend.Service.Name + "-")
+
+	var (
+		wrr      dynamic.WeightedRoundRobin
+		services []namedService
+	)
+
+	// Build canary service if needed.
+	if canaryConfig != nil {
+		canaryService, err := p.buildService(ingNamespace, ingConfig, canaryConfig.Backend)
+		if err != nil {
+			return "", wrr, nil, fmt.Errorf("building canary service: %w", err)
+		}
+
+		portString := backend.Service.Port.Name
+		if len(portString) == 0 {
+			portString = strconv.Itoa(int(backend.Service.Port.Number))
+		}
+		serviceName := prefix + portString
+
+		services = append(services, namedService{
+			Name:    serviceName,
+			Service: canaryService,
+		})
+		wrr.Services = append(wrr.Services, dynamic.WRRService{
+			Name:   serviceName,
+			Weight: ptr.To(1), // FIXME
+		})
+	}
+
+	// Build original service.
+	service, err := p.buildService(ingNamespace, ingConfig, backend)
+	if err != nil {
+		return "", wrr, nil, fmt.Errorf("building service: %w", err)
+	}
+
+	portString := backend.Service.Port.Name
+	if len(portString) == 0 {
+		portString = strconv.Itoa(int(backend.Service.Port.Number))
+	}
+	serviceName := prefix + portString
+
+	services = append(services, namedService{
+		Name:    serviceName,
+		Service: service,
+	})
+	wrr.Services = append(wrr.Services, dynamic.WRRService{
+		Name:   serviceName,
+		Weight: ptr.To(1), // FIXME
+	})
+
+	return prefix + "wrr", wrr, services, nil
+}
+
+func (p *Provider) buildService(ingNamespace string, ingConfig ingressConfig, backend netv1.IngressBackend) (*dynamic.Service, error) {
+	backendAddresses, err := p.getBackendAddresses(ingNamespace, backend, ingConfig)
 	if err != nil {
 		return nil, fmt.Errorf("getting backend addresses: %w", err)
 	}
@@ -639,22 +707,22 @@ func (p *Provider) buildService(namespace string, backend netv1.IngressBackend, 
 	lb := &dynamic.ServersLoadBalancer{}
 	lb.SetDefaults()
 
-	if ptr.Deref(cfg.Affinity, "") != "" {
+	if ptr.Deref(ingConfig.Affinity, "") != "" {
 		lb.Sticky = &dynamic.Sticky{
 			Cookie: &dynamic.Cookie{
-				Name:     ptr.Deref(cfg.SessionCookieName, "INGRESSCOOKIE"),
-				Secure:   ptr.Deref(cfg.SessionCookieSecure, false),
+				Name:     ptr.Deref(ingConfig.SessionCookieName, "INGRESSCOOKIE"),
+				Secure:   ptr.Deref(ingConfig.SessionCookieSecure, false),
 				HTTPOnly: true, // Default value in Nginx.
-				SameSite: strings.ToLower(ptr.Deref(cfg.SessionCookieSameSite, "")),
-				MaxAge:   ptr.Deref(cfg.SessionCookieMaxAge, 0),
-				Expires:  ptr.Deref(cfg.SessionCookieExpires, 0),
-				Path:     ptr.To(ptr.Deref(cfg.SessionCookiePath, "/")),
-				Domain:   ptr.Deref(cfg.SessionCookieDomain, ""),
+				SameSite: strings.ToLower(ptr.Deref(ingConfig.SessionCookieSameSite, "")),
+				MaxAge:   ptr.Deref(ingConfig.SessionCookieMaxAge, 0),
+				Expires:  ptr.Deref(ingConfig.SessionCookieExpires, 0),
+				Path:     ptr.To(ptr.Deref(ingConfig.SessionCookiePath, "/")),
+				Domain:   ptr.Deref(ingConfig.SessionCookieDomain, ""),
 			},
 		}
 	}
 
-	scheme := parseBackendProtocol(ptr.Deref(cfg.BackendProtocol, "HTTP"))
+	scheme := parseBackendProtocol(ptr.Deref(ingConfig.BackendProtocol, "HTTP"))
 
 	svc := &dynamic.Service{LoadBalancer: lb}
 	for _, addr := range backendAddresses {
@@ -883,6 +951,7 @@ func (p *Provider) loadCertificates(ctx context.Context, ingress *netv1.Ingress,
 	return nil
 }
 
+// FIXME conf should be the first parameter
 func (p *Provider) applyMiddlewares(namespace, routerKey, rulePath, ruleHost string, hosts map[string]bool, ingressConfig ingressConfig, hasTLS bool, rt *dynamic.Router, conf *dynamic.Configuration) error {
 	applyAppRootConfiguration(routerKey, ingressConfig, rt, conf)
 	applyFromToWwwRedirect(hosts, ruleHost, routerKey, ingressConfig, rt, conf)
