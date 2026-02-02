@@ -60,6 +60,12 @@ type certBlocks struct {
 	Certificate *tls.Certificate
 }
 
+type ingress struct {
+	*netv1.Ingress
+
+	Config ingressConfig
+}
+
 // Provider holds configurations of the provider.
 type Provider struct {
 	Endpoint         string              `description:"Kubernetes server endpoint (required for external cluster client)." json:"endpoint,omitempty" toml:"endpoint,omitempty" yaml:"endpoint,omitempty"`
@@ -264,20 +270,63 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 	}
 	ingressClasses = filterIngressClass(ics, p.IngressClassByName, p.IngressClass, p.ControllerClass)
 
+	// key: host + path + pathtype
+	// Original Ingress -> Canary Service
+	//                     Canary Service Weight
+
+	// Canary Ingress --> Original Ingress annotations
+
+	// FIXME add all config
+	type canaryConfig struct {
+		Weight  *int
+		Service netv1.IngressServiceBackend
+	}
+
+	// key: host+path+pathtype
+	canaries := make(map[string]canaryConfig)
+	ingressConfigs := make(map[string]ingressConfig) // might be server -> location
+
 	hosts := make(map[string]bool)
-	ingressesToProcess := make([]*netv1.Ingress, 0)
-	for _, ingress := range p.k8sClient.ListIngresses() {
-		if !p.shouldProcessIngress(ingress, ingressClasses) {
+	ingressesToProcess := make([]ingress, 0)
+	for _, ing := range p.k8sClient.ListIngresses() {
+		if !p.shouldProcessIngress(ing, ingressClasses) {
 			continue
 		}
 
-		for _, rule := range ingress.Spec.Rules {
-			if !hosts[rule.Host] {
+		ingressConfig, err := parseIngressConfig(ing)
+		if err != nil {
+			// FIXME
+			// logger.Error().Err(err).Msg("Error parsing ingress configuration")
+			continue
+		}
+
+		for _, rule := range ing.Spec.Rules {
+			if rule.HTTP != nil {
+				// Collect configurations for canaries.
+				for _, path := range rule.HTTP.Paths {
+					pathType := ptr.Deref(path.PathType, netv1.PathTypePrefix)
+					ingressConfigs[rule.Host+path.Path+string(pathType)] = ingressConfig
+
+					// Ingress is canary.
+					if ingressConfig.Canary != nil && ptr.Deref(ingressConfig.Canary, false) && path.Backend.Service != nil {
+						canaries[rule.Host+path.Path+string(pathType)] = canaryConfig{
+							Weight:  ingressConfig.CanaryWeight,
+							Service: *path.Backend.Service,
+						}
+					}
+				}
+			}
+
+			// Collect all hosts for middleware processing.
+			if rule.Host != "" {
 				hosts[rule.Host] = true
 			}
 		}
 
-		ingressesToProcess = append(ingressesToProcess, ingress)
+		ingressesToProcess = append(ingressesToProcess, ingress{
+			Ingress: ing,
+			Config:  ingressConfig,
+		})
 	}
 
 	uniqCerts := make(map[string]*tls.CertAndStores)
@@ -286,31 +335,25 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 		logger := log.Ctx(ctx).With().Str("ingress", ingress.Name).Str("namespace", ingress.Namespace).Logger()
 		ctxIngress := logger.WithContext(ctx)
 
-		ingressConfig, err := parseIngressConfig(ingress)
-		if err != nil {
-			logger.Error().Err(err).Msg("Error parsing ingress configuration")
-			continue
-		}
-
-		if err := p.updateIngressStatus(ingress); err != nil {
+		if err := p.updateIngressStatus(ingress.Ingress); err != nil {
 			logger.Error().Err(err).Msg("Error while updating ingress status")
 		}
 
 		var hasTLS bool
 		if len(ingress.Spec.TLS) > 0 {
 			hasTLS = true
-			if err := p.loadCertificates(ctxIngress, ingress, uniqCerts); err != nil {
+			if err := p.loadCertificates(ctxIngress, ingress.Ingress, uniqCerts); err != nil {
 				logger.Error().Err(err).Msg("Error configuring TLS")
 				continue
 			}
 		}
 
 		var clientAuthTLSOptionName string
-		if ingressConfig.AuthTLSSecret != nil {
-			tlsOptName := provider.Normalize(ingress.Namespace + "-" + ingress.Name + "-" + *ingressConfig.AuthTLSSecret)
+		if ingress.Config.AuthTLSSecret != nil {
+			tlsOptName := provider.Normalize(ingress.Namespace + "-" + ingress.Name + "-" + *ingress.Config.AuthTLSSecret)
 
 			if _, exists := tlsOptions[tlsOptName]; !exists {
-				tlsOpt, err := p.buildClientAuthTLSOption(ingress.Namespace, ingressConfig)
+				tlsOpt, err := p.buildClientAuthTLSOption(ingress.Namespace, ingress.Config)
 				if err != nil {
 					logger.Error().Err(err).Msg("Error configuring client auth TLS")
 					continue
@@ -322,7 +365,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 			clientAuthTLSOptionName = tlsOptName
 		}
 
-		namedServersTransport, err := p.buildServersTransport(ingress.Namespace, ingress.Name, ingressConfig)
+		namedServersTransport, err := p.buildServersTransport(ingress.Namespace, ingress.Name, ingress.Config)
 		if err != nil {
 			logger.Error().Err(err).Msg("Ignoring Ingress cannot create proxy SSL configuration")
 			continue
@@ -331,7 +374,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 		var defaultBackendService *dynamic.Service
 		if ingress.Spec.DefaultBackend != nil && ingress.Spec.DefaultBackend.Service != nil {
 			var err error
-			defaultBackendService, err = p.buildService(ingress.Namespace, *ingress.Spec.DefaultBackend, ingressConfig)
+			defaultBackendService, err = p.buildService(ingress.Namespace, *ingress.Spec.DefaultBackend, ingress.Config)
 			if err != nil {
 				logger.Error().
 					Str("serviceName", ingress.Spec.DefaultBackend.Service.Name).
@@ -350,7 +393,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				Service:    defaultBackendName,
 			}
 
-			if err := p.applyMiddlewares(ingress.Namespace, defaultBackendName, "", "", hosts, ingressConfig, hasTLS, rt, conf); err != nil {
+			if err := p.applyMiddlewares(ingress.Namespace, defaultBackendName, "", "", hosts, ingress.Config, hasTLS, rt, conf); err != nil {
 				logger.Error().Err(err).Msg("Error applying middlewares")
 			}
 
@@ -368,7 +411,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				rtTLS.TLS.Options = clientAuthTLSOptionName
 			}
 
-			if err := p.applyMiddlewares(ingress.Namespace, defaultBackendTLSName, "", "", hosts, ingressConfig, false, rtTLS, conf); err != nil {
+			if err := p.applyMiddlewares(ingress.Namespace, defaultBackendTLSName, "", "", hosts, ingress.Config, false, rtTLS, conf); err != nil {
 				logger.Error().Err(err).Msg("Error applying middlewares")
 			}
 
@@ -382,7 +425,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 		}
 
 		for ri, rule := range ingress.Spec.Rules {
-			if ptr.Deref(ingressConfig.SSLPassthrough, false) {
+			if ptr.Deref(ingress.Config.SSLPassthrough, false) {
 				if rule.Host == "" {
 					logger.Error().Err(err).Msg("Cannot process ssl-passthrough for rule without host")
 					continue
@@ -406,7 +449,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 					continue
 				}
 
-				service, err := p.buildPassthroughService(ingress.Namespace, *backend, ingressConfig)
+				service, err := p.buildPassthroughService(ingress.Namespace, *backend, ingress.Config)
 				if err != nil {
 					logger.Error().Err(err).Msgf("Cannot create passthrough service for %s", backend.Service.Name)
 					continue
@@ -445,7 +488,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 					Service:    key,
 				}
 
-				if err := p.applyMiddlewares(ingress.Namespace, key, "", "", hosts, ingressConfig, hasTLS, rt, conf); err != nil {
+				if err := p.applyMiddlewares(ingress.Namespace, key, "", "", hosts, ingress.Config, hasTLS, rt, conf); err != nil {
 					logger.Error().Err(err).Msg("Error applying middlewares")
 				}
 
@@ -462,7 +505,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 					rtTLS.TLS.Options = clientAuthTLSOptionName
 				}
 
-				if err := p.applyMiddlewares(ingress.Namespace, key+"-tls", "", "", hosts, ingressConfig, false, rtTLS, conf); err != nil {
+				if err := p.applyMiddlewares(ingress.Namespace, key+"-tls", "", "", hosts, ingress.Config, false, rtTLS, conf); err != nil {
 					logger.Error().Err(err).Msg("Error applying middlewares")
 				}
 
@@ -497,7 +540,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				// TODO: if no service, do not add middlewares and 503.
 				serviceName := provider.Normalize(ingress.Namespace + "-" + ingress.Name + "-" + pa.Backend.Service.Name + "-" + portString)
 
-				service, err := p.buildService(ingress.Namespace, pa.Backend, ingressConfig)
+				service, err := p.buildService(ingress.Namespace, pa.Backend, ingress.Config)
 				if err != nil {
 					logger.Error().
 						Str("serviceName", pa.Backend.Service.Name).
@@ -508,7 +551,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 				}
 
 				rt := &dynamic.Router{
-					Rule: buildRule(rule.Host, pa, ingressConfig),
+					Rule: buildRule(rule.Host, pa, ingress.Config),
 					// "default" stands for the default rule syntax in Traefik v3, i.e. the v3 syntax.
 					RuleSyntax: "default",
 					Service:    serviceName,
@@ -531,7 +574,7 @@ func (p *Provider) loadConfiguration(ctx context.Context) *dynamic.Configuration
 					conf.HTTP.ServersTransports[namedServersTransport.Name] = namedServersTransport.ServersTransport
 				}
 
-				if err := p.applyMiddlewares(ingress.Namespace, routerKey, pa.Path, rule.Host, hosts, ingressConfig, hasTLS, rt, conf); err != nil {
+				if err := p.applyMiddlewares(ingress.Namespace, routerKey, pa.Path, rule.Host, hosts, ingress.Config, hasTLS, rt, conf); err != nil {
 					logger.Error().Err(err).Msg("Error applying middlewares")
 				}
 			}

@@ -22,6 +22,14 @@ type ingressConfig struct {
 	AuthTLSSecret       *string `annotation:"nginx.ingress.kubernetes.io/auth-tls-secret"`
 	AuthTLSVerifyClient *string `annotation:"nginx.ingress.kubernetes.io/auth-tls-verify-client"`
 
+	Canary              *bool   `annotation:"nginx.ingress.kubernetes.io/canary"`
+	CanaryHeader        *string `annotation:"nginx.ingress.kubernetes.io/canary-by-header"`
+	CanaryHeaderValue   *string `annotation:"nginx.ingress.kubernetes.io/canary-by-header-value"`
+	CanaryWeight        *int    `annotation:"nginx.ingress.kubernetes.io/canary-weight"`
+	CanaryWeightTotal   *int    `annotation:"nginx.ingress.kubernetes.io/canary-weight-total"`
+	CanaryHeaderPattern *string `annotation:"nginx.ingress.kubernetes.io/canary-by-header-pattern"`
+	CanaryCookie        *string `annotation:"nginx.ingress.kubernetes.io/canary-by-cookie"`
+
 	ForceSSLRedirect *bool `annotation:"nginx.ingress.kubernetes.io/force-ssl-redirect"`
 	SSLRedirect      *bool `annotation:"nginx.ingress.kubernetes.io/ssl-redirect"`
 
